@@ -18,7 +18,7 @@ import { ArrowRightOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import CVATTooltip from 'components/common/cvat-tooltip';
 import { clamp } from 'utils/math';
 import {
-    MLModel, ModelKind, DimensionType, Label, LabelType,
+    MLModel, ModelKind, DimensionType, Label, LabelType, ShapeType,
 } from 'cvat-core-wrapper';
 
 import LabelsMapperComponent, { LabelInterface, FullMapping } from './labels-mapper';
@@ -68,6 +68,14 @@ function DetectorRunner(props: Props): JSX.Element {
         models, withCleanup, labels, dimension, runInference,
     } = props;
 
+    const requiredShape = dimension === DimensionType.DIMENSION_3D ? ShapeType.CUBOID : null;
+    const compatibleModels = models.filter((model) => {
+        if (!requiredShape) {
+            return true;
+        }
+        return model.supportedShapeTypes?.includes(requiredShape);
+    });
+
     const [modelID, setModelID] = useState<string | null>(null);
     const [threshold, setThreshold] = useState<number>(0.5);
     const [distance, setDistance] = useState<number>(50);
@@ -78,7 +86,7 @@ function DetectorRunner(props: Props): JSX.Element {
     const [modelLabels, setModelLabels] = useState<LabelInterface[]>([]);
     const [taskLabels, setTaskLabels] = useState<LabelInterface[]>([]);
 
-    const model = models.find((_model): boolean => _model.id === modelID);
+    const model = compatibleModels.find((_model): boolean => _model.id === modelID);
     const isDetector = model?.kind === ModelKind.DETECTOR;
     const isReId = model?.kind === ModelKind.REID;
     const convertMasks2PolygonVisible = isDetector &&
@@ -119,20 +127,26 @@ function DetectorRunner(props: Props): JSX.Element {
         }
     }, [labels, model]);
 
+    useEffect(() => {
+        if (modelID && !compatibleModels.some((_model) => _model.id === modelID)) {
+            setModelID(null);
+        }
+    }, [compatibleModels, modelID]);
+
     return (
         <div className='cvat-run-model-content'>
             <Row align='middle'>
                 <Col span={4}>Model:</Col>
                 <Col span={20}>
                     <Select
-                        placeholder={dimension === DimensionType.DIMENSION_2D ? 'Select a model' : 'No models available'}
-                        disabled={dimension !== DimensionType.DIMENSION_2D}
+                        placeholder={compatibleModels.length ? 'Select a model' : 'No models available'}
+                        disabled={!compatibleModels.length}
                         style={{ width: '100%' }}
                         onChange={(_modelID: string): void => {
                             setModelID(_modelID);
                         }}
                     >
-                        {models.map(
+                        {compatibleModels.map(
                             (_model: MLModel): JSX.Element => (
                                 <Select.Option value={_model.id} key={_model.id}>
                                     {_model.name}

@@ -1,0 +1,62 @@
+metadata:
+  name: pth-open3d-sit-pointcloud-rocm
+  namespace: cvat
+  annotations:
+    name: SIT PointCloud Cuboids (ROCm)
+    version: 1
+    type: detector
+    supported_shape_types: cuboid
+    spec: |
+      [
+        { "id": 0, "name": "car", "type": "cuboid" },
+        { "id": 1, "name": "truck", "type": "cuboid" },
+        { "id": 2, "name": "pedestrian", "type": "cuboid" }
+      ]
+
+spec:
+  description: Heuristic LiDAR cuboid proposals for SIT robotics datasets on ROCm GPUs
+  runtime: 'python:3.10'
+  handler: main:handler
+  eventTimeout: 30s
+  env:
+    - name: PYTHONPATH
+      value: /opt/nuclio/sit_pointcloud
+    - name: DEFAULT_CONFIDENCE_THRESHOLD
+      value: "0.35"
+    - name: DBSCAN_MIN_CLUSTER_POINTS
+      value: "40"
+    - name: DBSCAN_EPS
+      value: "1.0"
+
+  build:
+    image: cvat.pth.open3d.sit_pointcloud:latest-rocm
+    baseImage: docker.io/rocm/pytorch:rocm7.1_ubuntu22.04_py3.10_pytorch_release_2.6.0
+
+    directives:
+      preCopy:
+        - kind: ENV
+          value: DEBIAN_FRONTEND=noninteractive
+        - kind: WORKDIR
+          value: /opt/nuclio/sit_pointcloud
+        - kind: RUN
+          value: apt-get update && apt-get install -y python3 python3-pip libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
+        - kind: RUN
+          value: pip3 install --upgrade pip
+        - kind: RUN
+          value: pip3 install open3d==0.18.0 numpy
+
+  triggers:
+    myHttpTrigger:
+      numWorkers: 1
+      kind: 'http'
+      workerAvailabilityTimeoutMilliseconds: 10000
+      attributes:
+        maxRequestBodySize: 33554432 # 32MB
+
+  platform:
+    attributes:
+      restartPolicy:
+        name: always
+        maximumRetryCount: 3
+      mountMode: volume
+

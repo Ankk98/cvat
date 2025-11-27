@@ -28,7 +28,7 @@ import { AIToolsIcon } from 'icons';
 import { Canvas, convertShapesForInteractor } from 'cvat-canvas-wrapper';
 import {
     getCore, Label, MLModel, ObjectState, ObjectType, ShapeType, Job,
-    MinimalShape, InteractorResults, TrackerResults,
+    MinimalShape, InteractorResults, TrackerResults, DimensionType,
 } from 'cvat-core-wrapper';
 import openCVWrapper, { MatType } from 'utils/opencv-wrapper/opencv-wrapper';
 import {
@@ -1183,7 +1183,12 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
             jobInstance, detectors, curZOrder, frame, labels, createAnnotations,
         } = this.props;
 
-        if (!detectors.length) {
+        const requiresCuboid = jobInstance.dimension === DimensionType.DIMENSION_3D;
+        const dimensionAwareDetectors = requiresCuboid
+            ? detectors.filter((model: MLModel) => model.supportedShapeTypes?.includes(ShapeType.CUBOID))
+            : detectors;
+
+        if (!dimensionAwareDetectors.length) {
             return (
                 <Row justify='center' align='middle' style={{ marginTop: '5px' }}>
                     <Col>
@@ -1198,7 +1203,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
         return (
             <DetectorRunner
                 withCleanup={false}
-                models={detectors}
+                models={dimensionAwareDetectors}
                 labels={labels}
                 dimension={jobInstance.dimension}
                 runInference={async (model: MLModel, body: AnnotateTaskRequestBody) => {
