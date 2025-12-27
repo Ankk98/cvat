@@ -40,6 +40,8 @@ DEPLOY_SAM_AUTO=false
 DEPLOY_DETECTRON2=false
 DEPLOY_MMPOSE=false
 DEPLOY_MEDIAPIPE=false
+DEPLOY_MEDIAPIPE_SERVICE=false
+STOP_SERVICES=false
 USE_ROCM=true
 USE_TOOLBOX=false
 TOOLBOX_NAME="${EGOCENTRIC_TOOLBOX_NAME:-strix-halo-llm-finetuning}"
@@ -83,7 +85,9 @@ OPTIONS:
     --sam-auto              Deploy SAM Auto for automatic segmentation only
     --detectron2            Deploy Detectron2 RetinaNet for instance segmentation only
     --mmpose                Deploy MMPose for hand pose estimation only
-    --mediapipe             Deploy MediaPipe for lightweight pose estimation only
+    --mediapipe             Deploy MediaPipe Nuclio function for lightweight pose estimation only
+    --mediapipe-service     Setup and start MediaPipe standalone service (FastAPI)
+    --stop                  Stop deployed services (Nuclio functions and MediaPipe service)
     --cpu                   Use CPU deployment instead of ROCm
     --toolbox               Use toolbox deployment instead of host deployment
     --toolbox-name NAME     Specify toolbox name (default: strix-halo-llm-finetuning)
@@ -99,12 +103,15 @@ EXAMPLES:
     $0 --sam --cpu                  # Deploy only SAM on CPU
     $0 --toolbox --toolbox-name my-toolbox
     $0 --mmpose --detectron2        # Deploy specific models
+    $0 --mediapipe-service          # Setup and start MediaPipe standalone service
+    $0 --stop                       # Stop all deployed services
 
 MODELS INCLUDED:
     • SAM (Segment Anything) - Interactive segmentation for precise hand/object annotation
     • Detectron2 RetinaNet R101 - Instance segmentation for egocentric scenes
     • MMPose HRNet-W32 - Hand pose estimation for first-person view tracking
-    • MediaPipe Pose - Lightweight 33-keypoint pose estimation (fast CPU inference)
+    • MediaPipe Pose (Nuclio) - Lightweight 33-keypoint pose estimation (fast CPU inference)
+    • MediaPipe Service - Standalone FastAPI service for direct CVAT integration
 
 EOF
 }
@@ -139,6 +146,15 @@ while [[ $# -gt 0 ]]; do
         --mediapipe)
             DEPLOY_MEDIAPIPE=true
             DEPLOY_ALL=false
+            shift
+            ;;
+        --mediapipe-service)
+            DEPLOY_MEDIAPIPE_SERVICE=true
+            DEPLOY_ALL=false
+            shift
+            ;;
+        --stop)
+            STOP_SERVICES=true
             shift
             ;;
         --cpu)
@@ -223,6 +239,143 @@ deploy_cpu_model() {
         --env CVAT_FUNCTIONS_REDIS_HOST=cvat_redis_ondisk \
         --env CVAT_FUNCTIONS_REDIS_PORT=6666 \
         --platform-config '{"attributes": {"network": "cvat_cvat"}}'
+}
+
+# MediaPipe service management functions
+setup_mediapipe_service() {
+    local mediapipe_dir="$SCRIPT_DIR/mediapipe-service"
+
+    log_info "Setting up MediaPipe standalone service..."
+
+    if [[ ! -d "$mediapipe_dir" ]]; then
+        log_error "MediaPipe service directory not found: $mediapipe_dir"
+        return 1
+    fi
+
+    cd "$mediapipe_dir"
+
+    # Check if already set up
+    if [[ -d ".venv" ]] && [[ -f "start.sh" ]] && [[ -f "stop.sh" ]]; then
+        log_info "MediaPipe service already set up"
+        return 0
+    fi
+
+    # Run setup script
+    if [[ -f "run-setup.sh" ]]; then
+        log_info "Running MediaPipe service setup..."
+        ./run-setup.sh --cvat-url http://localhost:8080
+    elif [[ -f "setup.sh" ]]; then
+        log_info "Running basic MediaPipe service setup..."
+        ./setup.sh
+    else
+        log_error "No setup script found in MediaPipe service directory"
+        return 1
+    fi
+}
+
+start_mediapipe_service() {
+    local mediapipe_dir="$SCRIPT_DIR/mediapipe-service"
+
+    log_info "Starting MediaPipe standalone service..."
+
+    if [[ ! -d "$mediapipe_dir" ]]; then
+        log_error "MediaPipe service directory not found: $mediapipe_dir"
+        return 1
+    fi
+
+    cd "$mediapipe_dir"
+
+    # Check if virtual environment exists
+    if [[ ! -d ".venv" ]]; then
+        log_warning "Virtual environment not found. Setting up service first..."
+        setup_mediapipe_service
+    fi
+
+    # Check if start script exists
+    if [[ ! -f "start.sh" ]]; then
+        log_error "Start script not found. Service may not be properly set up."
+        return 1
+    fi
+
+    # Check if already running
+    if [[ -f "status.sh" ]] && ./status.sh 2>/dev/null | grep -q "is running"; then
+        log_info "MediaPipe service is already running"
+        return 0
+    fi
+
+    # Start the service in background
+    log_info "Starting MediaPipe service..."
+    ./start.sh &
+    local service_pid=$!
+
+    # Wait a bit for service to start
+    sleep 3
+
+    # Check if service started successfully
+    if [[ -f "status.sh" ]] && ./status.sh 2>/dev/null | grep -q "is running"; then
+        log_success "MediaPipe service started successfully (PID: $service_pid)"
+        return 0
+    else
+        log_error "Failed to start MediaPipe service"
+        return 1
+    fi
+}
+
+stop_mediapipe_service() {
+    local mediapipe_dir="$SCRIPT_DIR/mediapipe-service"
+
+    log_info "Stopping MediaPipe standalone service..."
+
+    if [[ ! -d "$mediapipe_dir" ]]; then
+        log_warning "MediaPipe service directory not found: $mediapipe_dir"
+        return 0
+    fi
+
+    cd "$mediapipe_dir"
+
+    # Check if stop script exists
+    if [[ ! -f "stop.sh" ]]; then
+        log_warning "Stop script not found. Service may not be set up."
+        return 0
+    fi
+
+    # Check if running
+    if [[ -f "status.sh" ]] && ! ./status.sh 2>/dev/null | grep -q "is running"; then
+        log_info "MediaPipe service is not running"
+        return 0
+    fi
+
+    # Stop the service
+    log_info "Stopping MediaPipe service..."
+    ./stop.sh
+
+    # Verify stopped
+    sleep 2
+    if [[ -f "status.sh" ]] && ! ./status.sh 2>/dev/null | grep -q "is running"; then
+        log_success "MediaPipe service stopped successfully"
+        return 0
+    else
+        log_warning "MediaPipe service may still be running"
+        return 1
+    fi
+}
+
+check_mediapipe_service_status() {
+    local mediapipe_dir="$SCRIPT_DIR/mediapipe-service"
+
+    if [[ ! -d "$mediapipe_dir" ]]; then
+        echo "MediaPipe service: Directory not found"
+        return 1
+    fi
+
+    cd "$mediapipe_dir"
+
+    if [[ ! -f "status.sh" ]]; then
+        echo "MediaPipe service: Not set up"
+        return 1
+    fi
+
+    ./status.sh 2>/dev/null || echo "MediaPipe service: Unable to check status"
 }
 
 # Check if deployer script exists and is executable
@@ -331,6 +484,61 @@ if [[ "$DEPLOY_ALL" = true ]]; then
     DEPLOY_MEDIAPIPE=true
 fi
 
+# Handle stop services option
+if [[ "$STOP_SERVICES" = true ]]; then
+    log_info "Stopping deployed services..."
+
+    # Stop Nuclio functions
+    log_info "Stopping Nuclio functions..."
+    nuctl get functions --platform local 2>/dev/null | grep -E "(pth-|omz-)" | awk '{print $2}' | while read -r func_name; do
+        if [[ -n "$func_name" ]]; then
+            log_info "Stopping Nuclio function: $func_name"
+            nuctl delete function "$func_name" --platform local 2>/dev/null || true
+        fi
+    done
+
+    # Stop MediaPipe service
+    stop_mediapipe_service
+
+    log_success "Service stop operation completed"
+    exit 0
+fi
+
+# Handle MediaPipe service deployment
+if [[ "$DEPLOY_MEDIAPIPE_SERVICE" = true ]]; then
+    log_info "Processing MediaPipe standalone service deployment..."
+
+    # Setup MediaPipe service
+    if setup_mediapipe_service; then
+        log_success "MediaPipe service setup completed"
+    else
+        log_error "Failed to setup MediaPipe service"
+        exit 1
+    fi
+
+    # Start MediaPipe service
+    if start_mediapipe_service; then
+        log_success "MediaPipe service deployment completed"
+    else
+        log_error "Failed to start MediaPipe service"
+        exit 1
+    fi
+
+    # Show service information
+    echo
+    log_info "MediaPipe Service Information:"
+    log_info "  📍 Service URL: http://localhost:8000"
+    log_info "  🔍 Health Check: http://localhost:8000/health"
+    log_info "  🎯 Detection API: http://localhost:8000/detect"
+    echo
+    log_info "Management commands:"
+    log_info "  📊 Check status: cd mediapipe-service && ./status.sh"
+    log_info "  🛑 Stop service: cd mediapipe-service && ./stop.sh"
+    log_info "  🔄 Restart service: cd mediapipe-service && ./stop.sh && ./start.sh"
+
+    exit 0
+fi
+
 # Deploy models
 deployed_count=0
 failed_count=0
@@ -434,6 +642,14 @@ if [[ $deployed_count -gt 0 ]]; then
     log_info "  1. Check Nuclio dashboard at http://localhost:8070"
     log_info "  2. Test the deployed functions with egocentric dataset samples"
     log_info "  3. Use CVAT's auto-annotation feature with the deployed models"
+
+    # Check MediaPipe service status
+    echo
+    log_info "MediaPipe Service Status:"
+    check_mediapipe_service_status
+
+    log_info "To start MediaPipe service: $0 --mediapipe-service"
+    log_info "To stop all services: $0 --stop"
 else
     log_error "No models were successfully deployed. Check the logs above for details."
     exit 1

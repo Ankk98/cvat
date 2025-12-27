@@ -7,7 +7,7 @@ This directory contains the serverless model implementations, deployment scripts
 ### Deployment Scripts & Tools
 | Script | Purpose | Key Features |
 |--------|---------|--------------|
-| [`deploy_egocentric_models.sh`](./deploy_egocentric_models.sh) | **Primary deployment tool** for egocentric vision models | Automated ROCm/CPU deployment, selective model deployment, comprehensive logging |
+| [`deploy_egocentric_models.sh`](./deploy_egocentric_models.sh) | **Primary deployment tool** for egocentric vision models | Automated ROCm/CPU deployment, selective model deployment, MediaPipe service management, comprehensive logging |
 | [`deploy_rocm_host.sh`](./deploy_rocm_host.sh) | ROCm deployment on host system | AMD GPU acceleration, automatic config detection |
 | [`deploy_rocm_toolbox.sh`](./deploy_rocm_toolbox.sh) | ROCm deployment in toolbox containers | Isolated environments, AMD GPU support |
 | [`deploy_cpu.sh`](./deploy_cpu.sh) | CPU-only model deployment | Legacy models, resource-constrained environments |
@@ -244,6 +244,12 @@ cd mediapipe-service
 
 # Force CPU deployment
 ./deploy_egocentric_models.sh --cpu --mmpose
+
+# Setup and start MediaPipe standalone service
+./deploy_egocentric_models.sh --mediapipe-service
+
+# Stop all deployed services
+./deploy_egocentric_models.sh --stop
 ```
 
 #### For AMD GPU Acceleration
@@ -286,8 +292,14 @@ cd serverless
 # Deploy all currently working egocentric models
 ./deploy_egocentric_models.sh
 
+# Alternatively, setup MediaPipe standalone service for direct CVAT integration
+./deploy_egocentric_models.sh --mediapipe-service
+
 # Check deployment status
 nuctl get functions
+
+# Stop all services when done
+./deploy_egocentric_models.sh --stop
 ```
 
 ### Expected Output
@@ -345,6 +357,33 @@ python -c "import torch; print(torch.cuda.is_available())"
 
 # Check CPU model compatibility
 python -c "import torch; print('CPU available:', torch.cuda.is_available() == False)"
+```
+
+#### MediaPipe Service Management
+```bash
+# Setup and start MediaPipe standalone service
+./deploy_egocentric_models.sh --mediapipe-service
+
+# Check MediaPipe service status
+cd mediapipe-service && ./status.sh
+
+# Stop MediaPipe service
+cd mediapipe-service && ./stop.sh
+
+# Stop all services (Nuclio functions + MediaPipe service)
+./deploy_egocentric_models.sh --stop
+```
+
+#### MediaPipe Service Issues
+```bash
+# Check if MediaPipe service is responding
+curl http://localhost:8000/health
+
+# Restart MediaPipe service
+cd mediapipe-service && ./stop.sh && ./start.sh
+
+# View MediaPipe service logs (when running in foreground)
+cd mediapipe-service && ./start.sh  # Run in current terminal to see logs
 ```
 
 ## 📈 Monitoring & Performance
