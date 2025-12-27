@@ -28,14 +28,15 @@ This directory contains the serverless model implementations, deployment scripts
 ### Independent Services
 
 #### MediaPipe Pose Service ([`mediapipe-service/`](./mediapipe-service/))
-**Complete standalone pose detection service** - Since MediaPipe has compatibility issues with Nuclio, we've created a full-featured independent service.
+**✅ INTEGRATED: MediaPipe is now fully integrated with CVAT's auto-annotation system** - Standalone FastAPI service with direct CVAT backend integration.
 
 **Features:**
-- **33-point pose estimation** with MediaPipe
-- **Hand-focused filtering** for egocentric vision
-- **FastAPI-based REST API** with automatic CVAT integration
+- **83-point pose + hand estimation** (33 body + 42 hand keypoints)
+- **Hand-focused filtering** optimized for egocentric vision
+- **Direct CVAT integration** via backend modifications
+- **Appears in CVAT auto-annotation dropdown** as "MediaPipe Pose + Hands"
+- **FastAPI-based REST API** with CVAT-compatible skeleton output
 - **Multiple deployment options**: Virtual environment, Docker, Docker Compose
-- **Automatic setup scripts** with CVAT function registration
 
 **Quick Start:**
 ```bash
@@ -45,8 +46,13 @@ cd mediapipe-service
 
 **API Endpoints:**
 - `GET /health` - Service health check
-- `POST /detect` - Pose detection with CVAT-compatible output
+- `POST /detect` - Pose detection with CVAT-compatible skeleton output
 - `GET /` - Service information and documentation
+
+**CVAT Integration:**
+- MediaPipe appears as a detector model in CVAT's auto-annotation interface
+- Supports egocentric video annotation with precise hand and finger tracking
+- Backend integration handles requests directly to avoid Nuclio compatibility issues
 
 **Status:** ✅ **Fully Working** - Ready for production use
 
@@ -104,7 +110,7 @@ cd mediapipe-service
 |-------|-------------|-------------|------------------|
 | **SAM** | 100% (3/3 images) | ~9.2s avg | Interactive segmentation masks for hands/objects |
 | **Detectron2** | 100% (1/1 images) | ~2.1s avg | Instance segmentation for kitchen scenes |
-| **MediaPipe Pose + Hands** | 100% (1/1 images) | ~0.03s avg | 23 keypoints (1 body pose + 22 hand joints) |
+| **MediaPipe Pose + Hands** | 100% (1/1 images) | ~0.03s avg | **✅ CVAT INTEGRATED** - 83 keypoints (33 body + 42 hand + 8 palm joints) |
 
 #### ⚠️ **Models Needing Fixes**
 | Model | Current Status | Issue | ETA |
@@ -139,7 +145,7 @@ cd mediapipe-service
 | **SiamMask** | [`foolwood/siammask/`](./pytorch/foolwood/siammask/) | Object tracking with segmentation | ✅ GPU | ✅ Working |
 | **IOG** | [`shiyinzhang/iog/`](./pytorch/shiyinzhang/iog/) | Interactive object segmentation | ❌ CPU | ✅ Working |
 | **Open3D SIT** | [`open3d/sit_pointcloud/`](./pytorch/open3d/sit_pointcloud/) | 3D point cloud segmentation | ✅ Full | ✅ Working |
-| **MediaPipe Pose** | [`google/mediapipe-pose/`](./pytorch/google/mediapipe-pose/) | Lightweight 11-point pose estimation | ❌ Complex | 📋 Reference |
+| **MediaPipe Pose + Hands** | [`google/mediapipe-pose/`](./pytorch/google/mediapipe-pose/) + [`mediapipe-service/`](./mediapipe-service/) | **✅ CVAT INTEGRATED** - 83-point pose + hand tracking | ❌ Standalone | ✅ **Integrated** |
 
 ### OpenVINO Models (`openvino/`)
 

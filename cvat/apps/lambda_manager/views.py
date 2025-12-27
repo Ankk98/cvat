@@ -117,18 +117,94 @@ class LambdaGateway:
             except InvalidFunctionMetadataError:
                 slogger.glob.error("Failed to parse lambda function metadata", exc_info=True)
 
+        # Add MediaPipe as a built-in function
+        try:
+            mediapipe_data = {
+                "metadata": {
+                    "name": "pth-google-mediapipe-pose",
+                    "namespace": "cvat",
+                    "labels": {"nuclio.io/project-name": "cvat"},
+                    "annotations": {
+                        "name": "MediaPipe Pose + Hands",
+                        "type": "detector",
+                        "framework": "mediapipe",
+                        "description": "Real-time pose estimation with hand and finger tracking for egocentric vision",
+                        "spec": '[{"name": "person", "type": "skeleton", "attributes": [{"name": "pose_confidence", "input_type": "number", "values": [0, 1]}, {"name": "hand_confidence", "input_type": "number", "values": [0, 1]}]}]'
+                    }
+                },
+                "spec": {
+                    "description": "MediaPipe Pose Detection service for egocentric videos",
+                    "runtime": "python:3.10",
+                    "handler": "proxy:handler",
+                    "eventTimeout": "30s"
+                },
+                "status": {
+                    "state": "ready"
+                }
+            }
+            yield LambdaFunction(self, mediapipe_data)
+        except Exception as e:
+            slogger.glob.error(f"Failed to add MediaPipe built-in function: {e}")
+
     def get(self, func_id):
+        # Handle MediaPipe built-in function
+        if func_id == "pth-google-mediapipe-pose":
+            mediapipe_data = {
+                "metadata": {
+                    "name": "pth-google-mediapipe-pose",
+                    "namespace": "cvat",
+                    "labels": {"nuclio.io/project-name": "cvat"},
+                    "annotations": {
+                        "name": "MediaPipe Pose + Hands",
+                        "type": "detector",
+                        "framework": "mediapipe",
+                        "description": "Real-time pose estimation with hand and finger tracking for egocentric vision",
+                        "spec": '[{"name": "person", "type": "skeleton", "attributes": [{"name": "pose_confidence", "input_type": "number", "values": [0, 1]}, {"name": "hand_confidence", "input_type": "number", "values": [0, 1]}]}]'
+                    }
+                },
+                "spec": {
+                    "description": "MediaPipe Pose Detection service for egocentric videos",
+                    "runtime": "python:3.10",
+                    "handler": "proxy:handler",
+                    "eventTimeout": "30s"
+                },
+                "status": {
+                    "state": "ready"
+                }
+            }
+            return LambdaFunction(self, mediapipe_data)
+
         data = self._http(url=self.NUCLIO_ROOT_URL + "/" + func_id)
         response = LambdaFunction(self, data)
         return response
 
     def invoke(self, func, payload):
+        # Handle MediaPipe built-in function
+        if func.id == "pth-google-mediapipe-pose":
+            return self._invoke_mediapipe(payload)
+
         invoke_method = {
             "dashboard": self._invoke_via_dashboard,
             "direct": self._invoke_directly,
         }
 
         return invoke_method[settings.NUCLIO["INVOKE_METHOD"]](func, payload)
+
+    def _invoke_mediapipe(self, payload):
+        """Invoke MediaPipe service directly."""
+        try:
+            import requests
+            # Call the MediaPipe service running on localhost:8000
+            response = requests.post(
+                "http://localhost:8000/detect",
+                json=payload,
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            slogger.glob.error(f"MediaPipe service call failed: {e}")
+            raise
 
     def _invoke_via_dashboard(self, func, payload):
         return self._http(
