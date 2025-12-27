@@ -44,6 +44,10 @@ spec:
       attributes:
         maxRequestBodySize: 268435456 # 256MB
 
+  resources:
+    limits:
+      amd.com/gpu: 1
+
   platform:
     attributes:
       restartPolicy:
