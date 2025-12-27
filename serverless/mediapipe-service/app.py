@@ -33,14 +33,13 @@ import mediapipe as mp
 import numpy as np
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
 from PIL import Image
 import uvicorn
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-app = FastAPI(title="MediaPipe Pose Service", version="1.0.0")
 
 # Initialize MediaPipe Pose and Hands
 mp_pose = mp.tasks.vision.PoseLandmarker
@@ -253,10 +252,21 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
     logger.info(f"Processed combined pose+hands with {len(skeleton['elements'])} keypoints")
     return [skeleton]
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize pose and hands detectors on startup."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle application startup and shutdown."""
+    # Startup
     init_detectors()
+    yield
+    # Shutdown (if needed)
+    pass
+
+app = FastAPI(
+    title="MediaPipe Pose + Hands Service",
+    description="Real-time pose estimation with hand tracking for egocentric vision",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 @app.get("/health")
 async def health_check():
@@ -343,9 +353,29 @@ async def root():
         }
     }
 
+def check_port_available(host: str, port: int) -> bool:
+    """Check if a port is available."""
+    import socket
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result != 0  # 0 means connection successful (port in use)
+    except:
+        return True
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     host = os.getenv("HOST", "0.0.0.0")
+
+    # Check if port is available, if not try next available port
+    if not check_port_available(host, port):
+        logger.warning(f"Port {port} is already in use, trying {port + 1}")
+        port += 1
+        if not check_port_available(host, port):
+            logger.error(f"Ports {port - 1} and {port} are both in use. Please specify a different port with PORT environment variable.")
+            exit(1)
 
     logger.info(f"Starting MediaPipe Pose Service on {host}:{port}")
     uvicorn.run(app, host=host, port=port)

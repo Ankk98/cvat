@@ -237,6 +237,7 @@ deploy_model() {
     local label="$1"
     local path="$2"
     local deployment_type="$3"
+    local custom_config="${4:-}"  # Optional 4th parameter for custom config file
 
     log_info "Deploying $label ($deployment_type)..."
 
@@ -249,7 +250,11 @@ deploy_model() {
     local has_config=false
     local config_file=""
 
-    if [[ "$deployment_type" == "ROCm" ]]; then
+    # If custom config is specified, use it
+    if [[ -n "$custom_config" ]]; then
+        config_file="$path/nuclio/$custom_config"
+        log_info "$label: Using custom config file: $custom_config"
+    elif [[ "$deployment_type" == "ROCm" ]]; then
         config_file="$path/nuclio/function-rocm.yaml"
         # Fallback to function-gpu.yaml if ROCm not available
         if [[ ! -f "$config_file" ]]; then

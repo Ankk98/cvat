@@ -146,6 +146,35 @@ class LambdaGateway:
         except Exception as e:
             slogger.glob.error(f"Failed to add MediaPipe built-in function: {e}")
 
+        # Add SAM Auto as a built-in detector function
+        try:
+            sam_auto_data = {
+                "metadata": {
+                    "name": "pth-facebookresearch-sam-auto",
+                    "namespace": "cvat",
+                    "labels": {"nuclio.io/project-name": "cvat"},
+                    "annotations": {
+                        "name": "SAM Auto Segmentation",
+                        "type": "detector",
+                        "framework": "pytorch",
+                        "description": "Automatic object segmentation using Segment Anything Model",
+                        "spec": '[{"name": "object", "type": "mask", "attributes": [{"name": "confidence", "input_type": "number", "values": [0, 1]}, {"name": "area", "input_type": "number"}]}]'
+                    }
+                },
+                "spec": {
+                    "description": "SAM Auto Segmentation service",
+                    "runtime": "python:3.10",
+                    "handler": "main_detector:handler",
+                    "eventTimeout": "60s"
+                },
+                "status": {
+                    "state": "ready"
+                }
+            }
+            yield LambdaFunction(self, sam_auto_data)
+        except Exception as e:
+            slogger.glob.error(f"Failed to add SAM Auto built-in function: {e}")
+
     def get(self, func_id):
         # Handle MediaPipe built-in function
         if func_id == "pth-google-mediapipe-pose":
@@ -174,14 +203,43 @@ class LambdaGateway:
             }
             return LambdaFunction(self, mediapipe_data)
 
+        # Handle SAM Auto built-in function
+        if func_id == "pth-facebookresearch-sam-auto":
+            sam_auto_data = {
+                "metadata": {
+                    "name": "pth-facebookresearch-sam-auto",
+                    "namespace": "cvat",
+                    "labels": {"nuclio.io/project-name": "cvat"},
+                    "annotations": {
+                        "name": "SAM Auto Segmentation",
+                        "type": "detector",
+                        "framework": "pytorch",
+                        "description": "Automatic object segmentation using Segment Anything Model",
+                        "spec": '[{"name": "object", "type": "mask", "attributes": [{"name": "confidence", "input_type": "number", "values": [0, 1]}, {"name": "area", "input_type": "number"}]}]'
+                    }
+                },
+                "spec": {
+                    "description": "SAM Auto Segmentation service",
+                    "runtime": "python:3.10",
+                    "handler": "main_detector:handler",
+                    "eventTimeout": "60s"
+                },
+                "status": {
+                    "state": "ready"
+                }
+            }
+            return LambdaFunction(self, sam_auto_data)
+
         data = self._http(url=self.NUCLIO_ROOT_URL + "/" + func_id)
         response = LambdaFunction(self, data)
         return response
 
     def invoke(self, func, payload):
-        # Handle MediaPipe built-in function
+        # Handle built-in functions
         if func.id == "pth-google-mediapipe-pose":
             return self._invoke_mediapipe(payload)
+        elif func.id == "pth-facebookresearch-sam-auto":
+            return self._invoke_sam_auto(payload)
 
         invoke_method = {
             "dashboard": self._invoke_via_dashboard,
@@ -204,6 +262,22 @@ class LambdaGateway:
             return response.json()
         except Exception as e:
             slogger.glob.error(f"MediaPipe service call failed: {e}")
+            raise
+
+    def _invoke_sam_auto(self, payload):
+        """Invoke SAM Auto segmentation via the deployed Nuclio function."""
+        # For SAM Auto, use the deployed function at port 32800 (from the deployment output)
+        import requests
+        try:
+            response = requests.post(
+                "http://localhost:32800",  # SAM function port
+                json=payload,
+                timeout=60  # Longer timeout for segmentation
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            slogger.glob.error(f"SAM Auto service call failed: {e}")
             raise
 
     def _invoke_via_dashboard(self, func, payload):
