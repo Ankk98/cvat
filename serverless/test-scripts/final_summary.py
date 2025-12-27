@@ -105,11 +105,14 @@ def print_final_summary(results: Dict[str, Dict]):
     print("-" * 25)
 
     sam_results = results.get('sam')
+    sam_auto_results = results.get('sam-auto')
     detectron2_results = results.get('detectron2')
     mediapipe_results = results.get('mediapipe')
 
     if sam_results:
         print(f"SAM:        {sam_results.get('success_rate', 0)*100:.1f}% success on hand images")
+    if sam_auto_results:
+        print(f"SAM Auto:   {sam_auto_results.get('success_rate', 0)*100:.1f}% success, automatic object detection")
     if detectron2_results:
         print(f"Detectron2: {detectron2_results.get('success_rate', 0)*100:.1f}% success on kitchen scenes")
     if mediapipe_results:

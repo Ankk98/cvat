@@ -11,6 +11,7 @@
 # Options:
 #   --all           Deploy all available egocentric models (default)
 #   --sam           Deploy SAM for interactive segmentation only
+#   --sam-auto      Deploy SAM Auto for automatic segmentation only
 #   --detectron2    Deploy Detectron2 RetinaNet for instance segmentation only
 #   --mmpose        Deploy MMPose for hand pose estimation only
 #   --cpu           Use CPU deployment instead of ROCm (for models without ROCm support)
@@ -35,6 +36,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 # Default configuration
 DEPLOY_ALL=true
 DEPLOY_SAM=false
+DEPLOY_SAM_AUTO=false
 DEPLOY_DETECTRON2=false
 DEPLOY_MMPOSE=false
 DEPLOY_MEDIAPIPE=false
@@ -78,6 +80,7 @@ USAGE:
 OPTIONS:
     --all                   Deploy all available egocentric models (default)
     --sam                   Deploy SAM for interactive segmentation only
+    --sam-auto              Deploy SAM Auto for automatic segmentation only
     --detectron2            Deploy Detectron2 RetinaNet for instance segmentation only
     --mmpose                Deploy MMPose for hand pose estimation only
     --mediapipe             Deploy MediaPipe for lightweight pose estimation only
@@ -115,6 +118,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --sam)
             DEPLOY_SAM=true
+            DEPLOY_ALL=false
+            shift
+            ;;
+        --sam-auto)
+            DEPLOY_SAM_AUTO=true
             DEPLOY_ALL=false
             shift
             ;;
@@ -335,6 +343,19 @@ if [[ "$DEPLOY_SAM" = true ]]; then
         log_error "SAM deployment failed"
     fi
     log_info "SAM processing block completed, moving to next model..."
+fi
+
+# SAM Auto - Automatic Segmentation
+if [[ "$DEPLOY_SAM_AUTO" = true ]]; then
+    log_info "Processing SAM Auto deployment..."
+    if deploy_model "SAM Auto (Automatic Segmentation)" "$SCRIPT_DIR/pytorch/facebookresearch/sam" "ROCm" "function-detector.yaml"; then
+        ((deployed_count++))
+        log_info "SAM Auto deployment completed successfully"
+    else
+        ((failed_count++))
+        log_error "SAM Auto deployment failed"
+    fi
+    log_info "SAM Auto processing block completed, moving to next model..."
 fi
 
 # Detectron2 RetinaNet - Instance Segmentation

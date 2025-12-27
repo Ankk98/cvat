@@ -2,7 +2,7 @@
 # Complete Egocentric Model Testing Suite Runner
 # ===============================================
 #
-# Runs the complete testing suite for SAM, Detectron2, and MediaPipe models
+# Runs the complete testing suite for SAM, SAM Auto, Detectron2, and MediaPipe models
 # on egocentric vision datasets. Includes automated setup, testing, and analysis.
 #
 # Usage:
@@ -23,7 +23,7 @@ set -e
 # Default values
 DATASET_DIR="./test-data"
 RESULTS_DIR="./test-results"
-MODELS="sam,detectron2,mediapipe"
+MODELS="sam,sam-auto,detectron2,mediapipe"
 DIFFICULTY="all"
 MAX_SAMPLES=50
 SKIP_DATASET=false
@@ -40,7 +40,7 @@ show_help() {
     cat << EOF
 Complete Egocentric Model Testing Suite
 
-Runs comprehensive testing of SAM, Detectron2, and MediaPipe models on egocentric datasets.
+Runs comprehensive testing of SAM, SAM Auto, Detectron2, and MediaPipe models on egocentric datasets.
 
 USAGE:
     ./run_all_tests.sh [OPTIONS]
@@ -244,6 +244,15 @@ run_tests() {
                     --max-samples "$MAX_SAMPLES" \
                     --output-dir "$RESULTS_DIR" \
                     --sam-url "http://localhost:32768"
+                ;;
+            sam-auto)
+                log_info "Testing SAM Auto model..."
+                python3 test_sam_auto_egocentric.py \
+                    --dataset "$DATASET_DIR" \
+                    --difficulty "$DIFFICULTY" \
+                    --max-samples "$MAX_SAMPLES" \
+                    --output-dir "$RESULTS_DIR" \
+                    --sam-auto-url "http://localhost:32770"
                 ;;
             detectron2)
                 log_info "Testing Detectron2 model..."

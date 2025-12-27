@@ -108,7 +108,8 @@ cd mediapipe-service
 #### ✅ **Working Models**
 | Model | Success Rate | Performance | Key Capabilities |
 |-------|-------------|-------------|------------------|
-| **SAM** | 100% (3/3 images) | ~9.2s avg | Interactive segmentation masks for hands/objects |
+| **SAM (Interactive)** | 100% (3/3 images) | ~9.2s avg | Interactive segmentation masks for hands/objects |
+| **SAM (Auto)** | 100% (13/13 images) | ~2.0s avg | Automatic object segmentation without user interaction |
 | **Detectron2** | 100% (1/1 images) | ~2.1s avg | Instance segmentation for kitchen scenes |
 | **MediaPipe Pose + Hands** | 100% (1/1 images) | ~0.03s avg | **✅ CVAT INTEGRATED** - 83 keypoints (33 body + 42 hand + 8 palm joints) |
 
@@ -132,7 +133,8 @@ cd mediapipe-service
 #### Core Egocentric Vision Models
 | Model | Path | Purpose | ROCm Support | Status |
 |-------|------|---------|--------------|--------|
-| **SAM** | [`facebookresearch/sam/`](./pytorch/facebookresearch/sam/) | Interactive segmentation for hands/objects | ✅ Full | ✅ Working |
+| **SAM (Interactive)** | [`facebookresearch/sam/`](./pytorch/facebookresearch/sam/) | Interactive segmentation for hands/objects | ✅ Full | ✅ Working |
+| **SAM (Auto)** | [`facebookresearch/sam/`](./pytorch/facebookresearch/sam/) | Automatic object segmentation | ✅ Full | ✅ **Tested & Working** |
 | **Detectron2** | [`facebookresearch/detectron2/retinanet_r101/`](./pytorch/facebookresearch/detectron2/retinanet_r101/) | Instance segmentation | ✅ Full | ✅ Working |
 | **MMPose** | [`mmpose/hrnet32/`](./pytorch/mmpose/hrnet32/) | Whole-body pose estimation | ❌ CPU only | ⚠️ Needs fixes |
 | **YOLO11 Pose** | [`ultralytics/yolov11-pose/`](./pytorch/ultralytics/yolov11-pose/) | Real-time pose estimation | ❌ CPU only | ⚠️ Needs fixes |
