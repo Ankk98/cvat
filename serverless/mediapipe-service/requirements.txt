@@ -1,0 +1,18 @@
+# MediaPipe Pose Detection Service Requirements
+# ==============================================
+
+# Core dependencies
+fastapi
+uvicorn[standard]
+python-multipart
+
+# MediaPipe for pose detection
+mediapipe
+
+# Image processing
+Pillow
+opencv-python-headless
+numpy
+
+# Additional utilities
+requests

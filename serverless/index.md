@@ -19,6 +19,33 @@ This directory contains the serverless model implementations, deployment scripts
 
 ## 🤖 Model Implementations
 
+### Independent Services
+
+#### MediaPipe Pose Service ([`mediapipe-service/`](./mediapipe-service/))
+**Complete standalone pose detection service** - Since MediaPipe has compatibility issues with Nuclio, we've created a full-featured independent service.
+
+**Features:**
+- **33-point pose estimation** with MediaPipe
+- **Hand-focused filtering** for egocentric vision
+- **FastAPI-based REST API** with automatic CVAT integration
+- **Multiple deployment options**: Virtual environment, Docker, Docker Compose
+- **Automatic setup scripts** with CVAT function registration
+
+**Quick Start:**
+```bash
+cd mediapipe-service
+./run-setup.sh --cvat-url http://localhost:8080
+```
+
+**API Endpoints:**
+- `GET /health` - Service health check
+- `POST /detect` - Pose detection with CVAT-compatible output
+- `GET /` - Service information and documentation
+
+**Status:** ✅ **Fully Working** - Ready for production use
+
+---
+
 ### PyTorch Models (`pytorch/`)
 
 #### Core Egocentric Vision Models
@@ -28,7 +55,7 @@ This directory contains the serverless model implementations, deployment scripts
 | **Detectron2** | [`facebookresearch/detectron2/retinanet_r101/`](./pytorch/facebookresearch/detectron2/retinanet_r101/) | Instance segmentation | ✅ Full | ✅ Working |
 | **MMPose** | [`mmpose/hrnet32/`](./pytorch/mmpose/hrnet32/) | Whole-body pose estimation | ❌ CPU only | ⚠️ Needs fixes |
 | **YOLO11 Pose** | [`ultralytics/yolov11-pose/`](./pytorch/ultralytics/yolov11-pose/) | Real-time pose estimation | ❌ CPU only | ⚠️ Needs fixes |
-| **MediaPipe Pose** | [`google/mediapipe-pose/`](./pytorch/google/mediapipe-pose/) | Lightweight pose estimation (11 keypoints) | ❌ Complex | 📋 Reference implementation |
+| **MediaPipe Pose + Hands** | [`mediapipe-service/`](./mediapipe-service/) | 75-point pose + finger joint tracking | ✅ **Working** | 🚀 Independent service |
 
 #### Advanced Models
 | Model | Path | Purpose | ROCm Support | Status |
@@ -111,7 +138,7 @@ This directory contains the serverless model implementations, deployment scripts
 | **Detectron2** | ✅ Working | N/A | Now |
 | **MMPose** | ❌ Broken | Python 3.9 upgrade | 1 week |
 | **YOLO11 Pose** | ❌ Broken | CPU deployment setup | 2 weeks |
-| **MediaPipe** | ❌ Complex | Reference implementation available | External service |
+| **MediaPipe Pose + Hands** | ✅ **Working** | Comprehensive finger joint tracking | Now |
 
 ## 🛠️ Development Guides
 
@@ -155,7 +182,7 @@ This directory contains the serverless model implementations, deployment scripts
 | **Interactive Segmentation** | SAM | SAM 2.0 | +10-20% | ✅ Working |
 | **Instance Segmentation** | Mask R-CNN | BEiT3/MaskDINO | +35-45% | ✅ Working |
 | **Semantic Segmentation** | ADAS Model | OneFormer | Massive | ❌ Needs implementation |
-| **Pose Estimation** | MMPose (limited) | YOLO11/DETRPose/MediaPipe | +0.4-5% | ⚠️ Needs fixes (MediaPipe ref available) |
+| **Pose Estimation** | MediaPipe Pose + Hands | YOLO11/DETRPose | +0.4-5% | ✅ **Complete finger tracking** |
 | **Object Detection** | YOLOv7 | YOLO11 | +5-10% | ❌ Needs implementation |
 
 ### Hardware Acceleration
