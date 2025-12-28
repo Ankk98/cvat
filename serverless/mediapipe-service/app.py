@@ -161,7 +161,6 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
     17: pinky_mcp, 18: pinky_pip, 19: pinky_dip, 20: pinky_tip
     """
     skeleton = {
-        "confidence": "1.0",
         "label": "person",
         "type": "skeleton",
         "elements": []
@@ -174,36 +173,33 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
         # CVAT skeleton format mapping for pose keypoints
         pose_keypoints = {
             # Face
-            0: "nose", 2: "left_eye", 5: "right_eye", 7: "left_ear", 8: "right_ear",
+            0: "nose", 1: "left_eye", 2: "right_eye", 3: "left_ear", 4: "right_ear",
             # Upper body
-            11: "left_shoulder", 12: "right_shoulder", 13: "left_elbow", 14: "right_elbow",
-            # Hands - wrists and finger bases
-            15: "left_wrist", 16: "right_wrist",
-            17: "left_pinky_base", 18: "right_pinky_base",
-            19: "left_index_base", 20: "right_index_base",
-            21: "left_thumb_base", 22: "right_thumb_base",
+            5: "left_shoulder", 6: "right_shoulder", 7: "left_elbow", 8: "right_elbow",
+            9: "left_wrist", 10: "right_wrist",
             # Lower body
-            23: "left_hip", 24: "right_hip", 25: "left_knee", 26: "right_knee",
-            27: "left_ankle", 28: "right_ankle"
+            11: "left_hip", 12: "right_hip", 13: "left_knee", 14: "right_knee",
+            15: "left_ankle", 16: "right_ankle"
         }
 
-        # Add pose keypoints
+        # Add pose keypoints (always include all keypoints, even low confidence ones)
         for mp_idx, keypoint_name in pose_keypoints.items():
             landmark = pose_landmarks[mp_idx]
-            confidence = landmark.visibility
+            confidence = getattr(landmark, 'visibility', None) or 1.0
 
-            if confidence > threshold:
-                element = {
-                    "label": keypoint_name,
-                    "type": "points",
-                    "outside": 0,
-                    "points": [
-                        landmark.x * image_width,
-                        landmark.y * image_height
-                    ],
-                    "confidence": str(confidence)
-                }
-                skeleton["elements"].append(element)
+            element = {
+                "label": keypoint_name,
+                "type": "points",
+                "outside": confidence <= threshold,
+                "points": [
+                    landmark.x * image_width,
+                    landmark.y * image_height
+                ],
+                "attributes": [
+                    {"name": "confidence", "value": str(confidence)}
+                ]
+            }
+            skeleton["elements"].append(element)
 
     # Process Hands results (detailed finger keypoints)
     if hands_results and hands_results.hand_landmarks:
@@ -218,36 +214,55 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
 
         # Process each detected hand
         for hand_idx, hand_landmarks in enumerate(hands_results.hand_landmarks):
-            handedness = "left" if hand_idx == 0 else f"hand_{hand_idx}"
+            # Use handedness classification if available, otherwise assume left/right based on index
+            try:
+                if hasattr(hands_results, 'handedness') and hands_results.handedness and hand_idx < len(hands_results.handedness):
+                    handedness = hands_results.handedness[hand_idx][0].category_name.lower()
+                elif hasattr(hands_results, 'multi_handedness') and hands_results.multi_handedness and hand_idx < len(hands_results.multi_handedness):
+                    handedness = hands_results.multi_handedness[hand_idx].classification[0].label.lower()
+                else:
+                    handedness = "left" if hand_idx == 0 else "right"
+            except (AttributeError, IndexError, KeyError):
+                handedness = "left" if hand_idx == 0 else "right"
 
-            # Add hand keypoints with handedness prefix
+            # Add hand keypoints with handedness prefix (always include all keypoints)
             for kp_idx, landmark in enumerate(hand_landmarks):
-                confidence = landmark.visibility
+                confidence = getattr(landmark, 'visibility', None) or 1.0
 
-                if confidence > threshold:
-                    keypoint_name = f"{handedness}_{hand_keypoints[kp_idx]}"
-                    element = {
-                        "label": keypoint_name,
-                        "type": "points",
-                        "outside": 0,
-                        "points": [
-                            landmark.x * image_width,
-                            landmark.y * image_height
-                        ],
-                        "confidence": str(confidence)
-                    }
-                    skeleton["elements"].append(element)
+                keypoint_name = f"{handedness}_{hand_keypoints[kp_idx]}"
+                element = {
+                    "label": keypoint_name,
+                    "type": "points",
+                    "outside": confidence <= threshold,
+                    "points": [
+                        landmark.x * image_width,
+                        landmark.y * image_height
+                    ],
+                    "attributes": [
+                        {"name": "confidence", "value": str(confidence)}
+                    ]
+                }
+                skeleton["elements"].append(element)
 
-    # Check if we have any keypoints at all
-    if not skeleton["elements"]:
-        logger.info("No keypoints detected above threshold")
+    # For egocentric videos, we want to include all keypoints but mark low-confidence ones as outside
+    # Count visible keypoints (those with confidence above threshold)
+    visible_keypoints = [elem for elem in skeleton["elements"] if not elem["outside"]]
+
+    # Count pose vs hand keypoints for logging
+    hand_labels = {f"{side}_{finger}_{joint}" for side in ["left", "right"]
+                   for finger in ["wrist", "thumb", "index", "middle", "ring", "pinky"]
+                   for joint in ["cmc", "mcp", "pip", "dip", "tip"] if joint != "cmc" or finger == "thumb"}
+    hand_labels.update([f"{side}_wrist" for side in ["left", "right"]])
+
+    pose_keypoints = [elem for elem in skeleton["elements"] if elem['label'] not in hand_labels]
+    hand_keypoints = [elem for elem in skeleton["elements"] if elem['label'] in hand_labels]
+
+    # Require at least 2 visible keypoints for a valid skeleton
+    if len(visible_keypoints) < 2:
+        logger.info(f"Insufficient visible keypoints detected ({len(visible_keypoints)}), skipping")
         return []
 
-    # Check if hands are visible (at least one wrist or multiple finger points)
-    hand_keypoints = [elem for elem in skeleton["elements"] if any(term in elem['label'] for term in ['wrist', 'thumb', 'index', 'middle', 'ring', 'pinky'])]
-    if len(hand_keypoints) < 3:  # Require at least 3 hand keypoints
-        logger.info(f"Insufficient hand keypoints detected ({len(hand_keypoints)}), skipping pose")
-        return []
+    logger.info(f"Detected skeleton with {len([kp for kp in pose_keypoints if not kp['outside']])} visible pose keypoints and {len([kp for kp in hand_keypoints if not kp['outside']])} visible hand keypoints")
 
     logger.info(f"Processed combined pose+hands with {len(skeleton['elements'])} keypoints")
     return [skeleton]
@@ -294,7 +309,7 @@ async def detect_pose(
 
         # Extract parameters from JSON
         image_b64 = data.get('image')
-        threshold = data.get('threshold', 0.3)
+        threshold = data.get('threshold', 0.05)  # Very low threshold for egocentric videos
 
         logger.info(f"Image provided: {image_b64 is not None}, threshold: {threshold}")
 
@@ -323,6 +338,16 @@ async def detect_pose(
 
         # Run hands detection
         hands_results = hands_detector.detect(mp_image)
+
+        # Debug: Log detection results
+        pose_detected = pose_results and pose_results.pose_landmarks
+        hands_detected = hands_results and hands_results.hand_landmarks
+
+        logger.info(f"Pose detected: {pose_detected}, Hands detected: {hands_detected}")
+        if pose_detected:
+            logger.info(f"Pose landmarks count: {len(pose_results.pose_landmarks)}")
+        if hands_detected:
+            logger.info(f"Hand landmarks count: {len(hands_results.hand_landmarks)}")
 
         # Combine results
         skeletons = process_combined_results(pose_results, hands_results, image_height, image_width, threshold)

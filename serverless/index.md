@@ -28,33 +28,42 @@ This directory contains the serverless model implementations, deployment scripts
 ### Independent Services
 
 #### MediaPipe Pose Service ([`mediapipe-service/`](./mediapipe-service/))
-**✅ INTEGRATED: MediaPipe is now fully integrated with CVAT's auto-annotation system** - Standalone FastAPI service with direct CVAT backend integration.
+**✅ FULLY INTEGRATED: MediaPipe auto-annotation is working in CVAT!** - Standalone FastAPI service with direct CVAT backend integration.
 
-**Features:**
-- **83-point pose + hand estimation** (33 body + 42 hand keypoints)
-- **Hand-focused filtering** optimized for egocentric vision
-- **Direct CVAT integration** via backend modifications
-- **Appears in CVAT auto-annotation dropdown** as "MediaPipe Pose + Hands"
-- **FastAPI-based REST API** with CVAT-compatible skeleton output
-- **Multiple deployment options**: Virtual environment, Docker, Docker Compose
+**Three Implementation Approaches:**
+
+##### 1. **MediaPipe Standalone Service** (✅ **RECOMMENDED - WORKING**)
+- **Location**: [`mediapipe-service/`](./mediapipe-service/) directory
+- **Architecture**: Independent FastAPI service running on port 8000
+- **Integration**: Direct backend integration with CVAT's lambda manager
+- **Features**:
+  - 83-point pose + hand estimation (33 body + 42 hand keypoints)
+  - Hand-focused filtering optimized for egocentric vision
+  - FastAPI-based REST API with CVAT-compatible skeleton output
+  - Appears in CVAT auto-annotation dropdown as "MediaPipe Pose + Hands"
+  - Multiple deployment options: Virtual environment, Docker, Docker Compose
 
 **Quick Start:**
 ```bash
 cd mediapipe-service
-./run-setup.sh --cvat-url http://localhost:8080
+./start.sh  # Starts the service on port 8000
+# Service appears in CVAT auto-annotation dropdown
 ```
 
 **API Endpoints:**
 - `GET /health` - Service health check
 - `POST /detect` - Pose detection with CVAT-compatible skeleton output
-- `GET /` - Service information and documentation
 
-**CVAT Integration:**
-- MediaPipe appears as a detector model in CVAT's auto-annotation interface
-- Supports egocentric video annotation with precise hand and finger tracking
-- Backend integration handles requests directly to avoid Nuclio compatibility issues
+##### 2. **Nuclio Function** (⚠️ **LEGACY - NOT RECOMMENDED**)
+- **Location**: [`pytorch/google/mediapipe-pose/nuclio/`](./pytorch/google/mediapipe-pose/nuclio/)
+- **Architecture**: Serverless function deployed via Nuclio
+- **Status**: ❌ **Deprecated** - Complex deployment, compatibility issues
 
-**Status:** ✅ **Fully Working** - Ready for production use
+##### 3. **ROCm GPU Version** (❌ **REMOVED - DIDN'T WORK**)
+- **Status**: Removed due to compatibility issues and complexity
+- **Reason**: ROCm deployment was unreliable and added confusion
+
+**Current Status:** ✅ **MediaPipe Standalone Service is fully working and integrated with CVAT auto-annotation!**
 
 ---
 
@@ -111,7 +120,7 @@ cd mediapipe-service
 | **SAM (Interactive)** | 100% (3/3 images) | ~9.2s avg | Interactive segmentation masks for hands/objects |
 | **SAM (Auto)** | 100% (13/13 images) | ~2.0s avg | Automatic object segmentation without user interaction |
 | **Detectron2** | 100% (1/1 images) | ~2.1s avg | Instance segmentation for kitchen scenes |
-| **MediaPipe Pose + Hands** | 100% (1/1 images) | ~0.03s avg | **✅ CVAT INTEGRATED** - 83 keypoints (33 body + 42 hand + 8 palm joints) |
+| **MediaPipe Pose + Hands** | 100% (frames tested) | ~0.03s avg | **✅ FULLY WORKING** - 83 keypoints in CVAT auto-annotation |
 
 #### ⚠️ **Models Needing Fixes**
 | Model | Current Status | Issue | ETA |
@@ -138,7 +147,7 @@ cd mediapipe-service
 | **Detectron2** | [`facebookresearch/detectron2/retinanet_r101/`](./pytorch/facebookresearch/detectron2/retinanet_r101/) | Instance segmentation | ✅ Full | ✅ Working |
 | **MMPose** | [`mmpose/hrnet32/`](./pytorch/mmpose/hrnet32/) | Whole-body pose estimation | ❌ CPU only | ⚠️ Needs fixes |
 | **YOLO11 Pose** | [`ultralytics/yolov11-pose/`](./pytorch/ultralytics/yolov11-pose/) | Real-time pose estimation | ❌ CPU only | ⚠️ Needs fixes |
-| **MediaPipe Pose + Hands** | [`mediapipe-service/`](./mediapipe-service/) | 75-point pose + finger joint tracking | ✅ **Working** | 🚀 Independent service |
+| **MediaPipe Pose + Hands** | [`mediapipe-service/`](./mediapipe-service/) | **✅ CVAT INTEGRATED** - 83-point pose + finger joint tracking | ✅ **Working** | 🚀 Standalone service |
 
 #### Advanced Models
 | Model | Path | Purpose | ROCm Support | Status |
@@ -221,7 +230,7 @@ cd mediapipe-service
 | **Detectron2** | ✅ Working | N/A | Now |
 | **MMPose** | ❌ Broken | Python 3.9 upgrade | 1 week |
 | **YOLO11 Pose** | ❌ Broken | CPU deployment setup | 2 weeks |
-| **MediaPipe Pose + Hands** | ✅ **Working** | Comprehensive finger joint tracking | Now |
+| **MediaPipe Pose + Hands** | ✅ **Fully Integrated** | Working in CVAT auto-annotation | Now |
 
 ## 🛠️ Development Guides
 

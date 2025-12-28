@@ -110,43 +110,7 @@ class LambdaGateway:
         return response
 
     def list(self):
-        data = self._http(url=self.NUCLIO_ROOT_URL)
-        for item in data.values():
-            try:
-                yield LambdaFunction(self, item)
-            except InvalidFunctionMetadataError:
-                slogger.glob.error("Failed to parse lambda function metadata", exc_info=True)
-
-        # Add MediaPipe as a built-in function
-        try:
-            mediapipe_data = {
-                "metadata": {
-                    "name": "pth-google-mediapipe-pose",
-                    "namespace": "cvat",
-                    "labels": {"nuclio.io/project-name": "cvat"},
-                    "annotations": {
-                        "name": "MediaPipe Pose + Hands",
-                        "type": "detector",
-                        "framework": "mediapipe",
-                        "description": "Real-time pose estimation with hand and finger tracking for egocentric vision",
-                        "spec": '[{"name": "person", "type": "skeleton", "attributes": [{"name": "pose_confidence", "input_type": "number", "values": [0, 1]}, {"name": "hand_confidence", "input_type": "number", "values": [0, 1]}]}]'
-                    }
-                },
-                "spec": {
-                    "description": "MediaPipe Pose Detection service for egocentric videos",
-                    "runtime": "python:3.10",
-                    "handler": "proxy:handler",
-                    "eventTimeout": "30s"
-                },
-                "status": {
-                    "state": "ready"
-                }
-            }
-            yield LambdaFunction(self, mediapipe_data)
-        except Exception as e:
-            slogger.glob.error(f"Failed to add MediaPipe built-in function: {e}")
-
-        # Add SAM Auto as a built-in detector function
+        # Always add SAM Auto as a built-in detector function
         try:
             sam_auto_data = {
                 "metadata": {
@@ -174,6 +138,17 @@ class LambdaGateway:
             yield LambdaFunction(self, sam_auto_data)
         except Exception as e:
             slogger.glob.error(f"Failed to add SAM Auto built-in function: {e}")
+
+        # Try to get Nuclio functions
+        try:
+            data = self._http(url=self.NUCLIO_ROOT_URL)
+            for item in data.values():
+                try:
+                    yield LambdaFunction(self, item)
+                except InvalidFunctionMetadataError:
+                    slogger.glob.error("Failed to parse lambda function metadata", exc_info=True)
+        except Exception as e:
+            slogger.glob.warning(f"Failed to retrieve Nuclio functions: {e}. Built-in functions will still be available.")
 
     def get(self, func_id):
         # Handle MediaPipe built-in function
@@ -236,9 +211,7 @@ class LambdaGateway:
 
     def invoke(self, func, payload):
         # Handle built-in functions
-        if func.id == "pth-google-mediapipe-pose":
-            return self._invoke_mediapipe(payload)
-        elif func.id == "pth-facebookresearch-sam-auto":
+        if func.id == "pth-facebookresearch-sam-auto":
             return self._invoke_sam_auto(payload)
 
         invoke_method = {
@@ -246,23 +219,7 @@ class LambdaGateway:
             "direct": self._invoke_directly,
         }
 
-        return invoke_method[settings.NUCLIO["INVOKE_METHOD"]](func, payload)
-
-    def _invoke_mediapipe(self, payload):
-        """Invoke MediaPipe service directly."""
-        try:
-            import requests
-            # Call the MediaPipe service running on localhost:8000
-            response = requests.post(
-                "http://localhost:8000/detect",
-                json=payload,
-                timeout=30
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            slogger.glob.error(f"MediaPipe service call failed: {e}")
-            raise
+        return invoke_method[invoke_mode](func, payload)
 
     def _invoke_sam_auto(self, payload):
         """Invoke SAM Auto segmentation via the deployed Nuclio function."""

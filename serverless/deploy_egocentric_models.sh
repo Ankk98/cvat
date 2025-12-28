@@ -85,7 +85,7 @@ OPTIONS:
     --sam-auto              Deploy SAM Auto for automatic segmentation only
     --detectron2            Deploy Detectron2 RetinaNet for instance segmentation only
     --mmpose                Deploy MMPose for hand pose estimation only
-    --mediapipe             Deploy MediaPipe Nuclio function for lightweight pose estimation only
+        --mediapipe             Deploy MediaPipe standalone service for pose estimation (deprecated - use --mediapipe-service)
     --mediapipe-service     Setup and start MediaPipe standalone service (FastAPI)
     --stop                  Stop deployed services (Nuclio functions and MediaPipe service)
     --cpu                   Use CPU deployment instead of ROCm
@@ -604,24 +604,16 @@ if [[ "$DEPLOY_MMPOSE" = true ]]; then
     fi
 fi
 
-# MediaPipe - Lightweight Pose Estimation
+# MediaPipe - Pose + Hands Detection (deprecated - use --mediapipe-service)
 if [[ "$DEPLOY_MEDIAPIPE" = true ]]; then
-    log_info "Processing MediaPipe deployment..."
-    # MediaPipe works well on both CPU and ROCm
-    mediapipe_path="$SCRIPT_DIR/pytorch/google/mediapipe-pose"
-    if [[ "$USE_ROCM" = true ]] && [[ -f "$mediapipe_path/nuclio/function-rocm.yaml" ]]; then
-        deployment_type="ROCm"
-    else
-        deployment_type="CPU"
-        log_info "MediaPipe: Using CPU deployment (ROCm config not available)"
-    fi
-
-    if deploy_model "MediaPipe Pose (33 keypoints)" "$mediapipe_path" "$deployment_type"; then
+    log_warning "MediaPipe Nuclio deployment is deprecated. Use --mediapipe-service instead."
+    log_info "Setting up MediaPipe standalone service..."
+    if setup_mediapipe_service && start_mediapipe_service; then
+        log_success "MediaPipe service setup completed (use --mediapipe-service for management)"
         ((deployed_count++))
-        log_info "MediaPipe deployment completed successfully"
     else
+        log_error "Failed to setup MediaPipe service"
         ((failed_count++))
-        log_error "MediaPipe deployment failed"
     fi
 fi
 
