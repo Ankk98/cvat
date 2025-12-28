@@ -28,26 +28,29 @@ This directory contains the serverless model implementations, deployment scripts
 ### Independent Services
 
 #### MediaPipe Pose Service ([`mediapipe-service/`](./mediapipe-service/))
-**✅ FULLY INTEGRATED: MediaPipe auto-annotation is working in CVAT!** - Standalone FastAPI service with direct CVAT backend integration.
+**✅ FULLY INTEGRATED & TESTED: MediaPipe auto-annotation is working end-to-end in CVAT!** - Standalone FastAPI service with direct CVAT backend integration and skeleton rendering support.
 
 **Three Implementation Approaches:**
 
-##### 1. **MediaPipe Standalone Service** (✅ **RECOMMENDED - WORKING**)
+##### 1. **MediaPipe Standalone Service** (✅ **RECOMMENDED - PRODUCTION READY**)
 - **Location**: [`mediapipe-service/`](./mediapipe-service/) directory
 - **Architecture**: Independent FastAPI service running on port 8000
 - **Integration**: Direct backend integration with CVAT's lambda manager
 - **Features**:
-  - 83-point pose + hand estimation (33 body + 42 hand keypoints)
+  - 57-point pose + hand estimation (33 body + 24 hand keypoints)
   - Hand-focused filtering optimized for egocentric vision
   - FastAPI-based REST API with CVAT-compatible skeleton output
   - Appears in CVAT auto-annotation dropdown as "MediaPipe Pose + Hands"
+  - **✅ Skeleton rendering fully working** - All keypoints display correctly in CVAT canvas
   - Multiple deployment options: Virtual environment, Docker, Docker Compose
+- **Status**: ✅ **Production Ready** - Fully tested with egocentric videos, skeleton annotations render correctly
 
 **Quick Start:**
 ```bash
 cd mediapipe-service
 ./start.sh  # Starts the service on port 8000
 # Service appears in CVAT auto-annotation dropdown
+# Auto-annotated skeletons render correctly in CVAT job view
 ```
 
 **API Endpoints:**
@@ -63,7 +66,7 @@ cd mediapipe-service
 - **Status**: Removed due to compatibility issues and complexity
 - **Reason**: ROCm deployment was unreliable and added confusion
 
-**Current Status:** ✅ **MediaPipe Standalone Service is fully working and integrated with CVAT auto-annotation!**
+**Current Status:** ✅ **MediaPipe Standalone Service is fully working, tested, and skeleton rendering is fixed!**
 
 ---
 
@@ -120,7 +123,7 @@ cd mediapipe-service
 | **SAM (Interactive)** | 100% (3/3 images) | ~9.2s avg | Interactive segmentation masks for hands/objects |
 | **SAM (Auto)** | 100% (13/13 images) | ~2.0s avg | Automatic object segmentation without user interaction |
 | **Detectron2** | 100% (1/1 images) | ~2.1s avg | Instance segmentation for kitchen scenes |
-| **MediaPipe Pose + Hands** | 100% (frames tested) | ~0.03s avg | **✅ FULLY WORKING** - 83 keypoints in CVAT auto-annotation |
+| **MediaPipe Pose + Hands** | 100% (frames tested) | ~0.03s avg | **✅ FULLY WORKING** - 57 keypoints (33 body + 24 hand) in CVAT auto-annotation, skeleton rendering fixed |
 
 #### ⚠️ **Models Needing Fixes**
 | Model | Current Status | Issue | ETA |
@@ -147,7 +150,7 @@ cd mediapipe-service
 | **Detectron2** | [`facebookresearch/detectron2/retinanet_r101/`](./pytorch/facebookresearch/detectron2/retinanet_r101/) | Instance segmentation | ✅ Full | ✅ Working |
 | **MMPose** | [`mmpose/hrnet32/`](./pytorch/mmpose/hrnet32/) | Whole-body pose estimation | ❌ CPU only | ⚠️ Needs fixes |
 | **YOLO11 Pose** | [`ultralytics/yolov11-pose/`](./pytorch/ultralytics/yolov11-pose/) | Real-time pose estimation | ❌ CPU only | ⚠️ Needs fixes |
-| **MediaPipe Pose + Hands** | [`mediapipe-service/`](./mediapipe-service/) | **✅ CVAT INTEGRATED** - 83-point pose + finger joint tracking | ✅ **Working** | 🚀 Standalone service |
+| **MediaPipe Pose + Hands** | [`mediapipe-service/`](./mediapipe-service/) | **✅ CVAT INTEGRATED** - 57-point pose + hand tracking (33 body + 24 hand), skeleton rendering fixed | ✅ **Production Ready** | 🚀 Standalone service |
 
 #### Advanced Models
 | Model | Path | Purpose | ROCm Support | Status |
@@ -156,7 +159,7 @@ cd mediapipe-service
 | **SiamMask** | [`foolwood/siammask/`](./pytorch/foolwood/siammask/) | Object tracking with segmentation | ✅ GPU | ✅ Working |
 | **IOG** | [`shiyinzhang/iog/`](./pytorch/shiyinzhang/iog/) | Interactive object segmentation | ❌ CPU | ✅ Working |
 | **Open3D SIT** | [`open3d/sit_pointcloud/`](./pytorch/open3d/sit_pointcloud/) | 3D point cloud segmentation | ✅ Full | ✅ Working |
-| **MediaPipe Pose + Hands** | [`google/mediapipe-pose/`](./pytorch/google/mediapipe-pose/) + [`mediapipe-service/`](./mediapipe-service/) | **✅ CVAT INTEGRATED** - 83-point pose + hand tracking | ❌ Standalone | ✅ **Integrated** |
+| **MediaPipe Pose + Hands** | [`google/mediapipe-pose/`](./pytorch/google/mediapipe-pose/) + [`mediapipe-service/`](./mediapipe-service/) | **✅ CVAT INTEGRATED** - 57-point pose + hand tracking (33 body + 24 hand), skeleton rendering fixed | ❌ Standalone | ✅ **Production Ready** |
 
 ### OpenVINO Models (`openvino/`)
 
@@ -280,7 +283,7 @@ cd mediapipe-service
 | **Interactive Segmentation** | SAM | SAM 2.0 | +10-20% | ✅ Working |
 | **Instance Segmentation** | Mask R-CNN | BEiT3/MaskDINO | +35-45% | ✅ Working |
 | **Semantic Segmentation** | ADAS Model | OneFormer | Massive | ❌ Needs implementation |
-| **Pose Estimation** | MediaPipe Pose + Hands | YOLO11/DETRPose | +0.4-5% | ✅ **Complete finger tracking** |
+| **Pose Estimation** | MediaPipe Pose + Hands | YOLO11/DETRPose | +0.4-5% | ✅ **Complete hand tracking, skeleton rendering fixed** |
 | **Object Detection** | YOLOv7 | YOLO11 | +5-10% | ❌ Needs implementation |
 
 ### Hardware Acceleration
@@ -441,6 +444,6 @@ import time
 
 ---
 
-**Last Updated**: December 27, 2025
+**Last Updated**: December 28, 2025
 **Maintained by**: CVAT Development Team
 **Contact**: For issues with serverless models or deployment

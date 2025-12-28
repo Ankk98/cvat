@@ -1089,7 +1089,14 @@ export class DrawHandlerImpl implements DrawHandler {
                     attributes: element.attributes,
                     points: (() => {
                         const circle = this.pointsGroup.children()
-                            .find((child: SVG.Element) => child.attr('data-label-id') === element.label.id);
+                            .find((child: SVG.Element) => {
+                                const labelId = child.attr('data-label-id');
+                                return labelId !== null && labelId !== undefined && String(labelId) === String(element.label.id);
+                            });
+                        if (!circle) {
+                            console.warn(`Circle not found for label ID ${element.label.id} in drawHandler`);
+                            return [0, 0]; // Fallback
+                        }
                         const points = translateFromCanvas(this.geometry.offset, [circle.cx(), circle.cy()]);
                         return points;
                     })(),

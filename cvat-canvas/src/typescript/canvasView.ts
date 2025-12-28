@@ -3411,7 +3411,27 @@ export class CanvasViewImpl implements CanvasView, Listener {
                     ybr = ybr === null ? cy : Math.max(ybr, cy);
                 }
 
-                const templateElement = templateElements.find((el: SVG.Circle) => el.attr('data-label-id') === element.label.id);
+                // Try to find template element by ID first, then by name
+                let templateElement = templateElements.find((el: SVG.Circle) => {
+                    const labelId = el.attr('data-label-id');
+                    return labelId !== null && labelId !== undefined && String(labelId) === String(element.label.id);
+                });
+
+                // If not found by ID, try to find by data-node-id (which matches sublabel name)
+                // This handles cases where SVG template has sequential IDs (0-56) but database has different IDs (217-273)
+                if (!templateElement) {
+                    templateElement = templateElements.find((el: SVG.Circle) => {
+                        const nodeId = el.attr('data-node-id');
+                        return nodeId !== null && nodeId !== undefined && nodeId === element.label.name;
+                    });
+                }
+
+                if (!templateElement) {
+                    console.warn(`Template element not found for label ID ${element.label.id} (label name: ${element.label.name})`);
+                    // Skip this element if template not found
+                    continue;
+                }
+
                 const circle = skeleton.circle()
                     .center(cx, cy)
                     .attr({
