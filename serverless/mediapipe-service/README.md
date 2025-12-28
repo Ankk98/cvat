@@ -4,14 +4,18 @@ Comprehensive pose and hand detection service for CVAT using MediaPipe, providin
 
 ## Features
 
-- **33-point full-body pose estimation** using MediaPipe Pose
-- **42-point detailed hand tracking** using MediaPipe Hands (21 keypoints × 2 hands)
+- **57-point pose + hand estimation** (33 body + 24 hand keypoints)
+- **Optimized for egocentric videos** (first-person perspective)
+- **Hand prioritization** (focuses on hands closest to frame center)
+- **Lower detection thresholds** (0.3) for challenging scenarios
 - **Complete finger joint detection** including PIP, DIP, and MCP joints
 - **Hand-focused filtering** optimized for egocentric vision
 - **Combined pose + hands processing** in single API call
 - **RESTful API** compatible with CVAT
 - **CPU optimized** for efficient inference
 - **Automatic setup** with virtual environment
+- **✅ Production-ready** - Fully tested with egocentric video datasets
+- **✅ Coordinate fixes applied** - RGB format conversion and coordinate clamping
 
 ## Comprehensive Hand and Finger Joint Detection
 

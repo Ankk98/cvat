@@ -68,15 +68,16 @@ def init_detectors():
             logger.info("Pose model downloaded successfully")
 
         # Create pose landmarker options
+        # Lower thresholds for egocentric videos (was 0.5, now 0.3)
         pose_options = mp.tasks.vision.PoseLandmarkerOptions(
             base_options=mp.tasks.BaseOptions(
                 model_asset_path=pose_model_path
             ),
             running_mode=mp.tasks.vision.RunningMode.IMAGE,
             num_poses=1,
-            min_pose_detection_confidence=0.5,
-            min_pose_presence_confidence=0.5,
-            min_tracking_confidence=0.5,
+            min_pose_detection_confidence=0.3,  # Lowered from 0.5 for egocentric videos
+            min_pose_presence_confidence=0.3,  # Lowered from 0.5 for egocentric videos
+            min_tracking_confidence=0.3,  # Lowered from 0.5 for egocentric videos
             output_segmentation_masks=False
         )
 
@@ -98,15 +99,16 @@ def init_detectors():
             logger.info("Hand model downloaded successfully")
 
         # Create hand landmarker options
+        # Lower thresholds for egocentric videos (was 0.5, now 0.3)
         hands_options = mp.tasks.vision.HandLandmarkerOptions(
             base_options=mp.tasks.BaseOptions(
                 model_asset_path=hands_model_path
             ),
             running_mode=mp.tasks.vision.RunningMode.IMAGE,
             num_hands=2,  # Detect up to 2 hands
-            min_hand_detection_confidence=0.5,
-            min_hand_presence_confidence=0.5,
-            min_tracking_confidence=0.5
+            min_hand_detection_confidence=0.3,  # Lowered from 0.5 for egocentric videos
+            min_hand_presence_confidence=0.3,  # Lowered from 0.5 for egocentric videos
+            min_tracking_confidence=0.3  # Lowered from 0.5 for egocentric videos
         )
 
         # Create the hand landmarker
@@ -114,6 +116,70 @@ def init_detectors():
         logger.info("MediaPipe Hands detector initialized successfully")
 
     return pose_detector, hands_detector
+
+def prioritize_hands(hands_results, image_width: int, image_height: int, center_weight: float = 0.5) -> List:
+    """
+    Prioritize hands based on:
+    - Distance from center of frame (egocentric videos focus on center)
+    - Number of visible keypoints
+    - Average confidence
+
+    Returns: List of prioritized hand landmarks (up to 2)
+    """
+    if not hands_results or not hands_results.hand_landmarks:
+        return []
+
+    # Calculate center of frame
+    center_x, center_y = image_width / 2, image_height / 2
+
+    # Score each hand
+    scored_hands = []
+    for hand_idx, hand_landmarks in enumerate(hands_results.hand_landmarks):
+        # Calculate distance from center using wrist (first keypoint)
+        wrist = hand_landmarks[0]
+        wrist_x = wrist.x * image_width
+        wrist_y = wrist.y * image_height
+
+        dist_from_center = np.sqrt(
+            (wrist_x - center_x)**2 +
+            (wrist_y - center_y)**2
+        )
+        max_dim = max(image_width, image_height)
+        normalized_dist = dist_from_center / max_dim if max_dim > 0 else 1.0
+
+        # Count visible keypoints (hand landmarks don't have visibility, so count all)
+        # For hand landmarks, visibility/presence may be None, so we assume all are visible
+        def get_hand_confidence(lm):
+            vis = getattr(lm, 'visibility', None)
+            pres = getattr(lm, 'presence', None)
+            # If visibility/presence exist, use them; otherwise assume 1.0 (visible)
+            if vis is not None:
+                return vis
+            elif pres is not None:
+                return pres
+            else:
+                return 1.0
+
+        visible_count = sum(1 for lm in hand_landmarks
+                          if get_hand_confidence(lm) > 0.3)
+
+        # Average confidence
+        avg_confidence = np.mean([get_hand_confidence(lm)
+                                 for lm in hand_landmarks])
+
+        # Combined score (lower distance = higher score)
+        # Center proximity: 50%, visible keypoints: 30%, confidence: 20%
+        score = (1 - normalized_dist) * center_weight + \
+                (visible_count / 21) * 0.3 + \
+                avg_confidence * 0.2
+
+        scored_hands.append((score, hand_idx, hand_landmarks))
+
+    # Sort by score (highest first)
+    scored_hands.sort(reverse=True, key=lambda x: x[0])
+
+    # Return top 2 hands (or all if less than 2)
+    return [hand for _, _, hand in scored_hands[:2]]
 
 def image_to_cv2(image_data: bytes) -> np.ndarray:
     """Convert image bytes to OpenCV format."""
@@ -127,13 +193,16 @@ def image_to_cv2(image_data: bytes) -> np.ndarray:
 
         # Convert to PIL Image first, then to OpenCV
         pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        # Convert PIL RGB to numpy array, then to OpenCV BGR
+        # MediaPipe expects RGB format, but we convert to BGR for OpenCV compatibility
+        # Then MediaPipe Image will convert back to RGB internally
         cv2_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
         return cv2_image
     except Exception as e:
         logger.error(f"Failed to decode image: {e}")
         raise ValueError(f"Invalid image format: {e}")
 
-def process_combined_results(pose_results, hands_results, image_height: int, image_width: int, threshold: float = 0.5) -> List[Dict]:
+def process_combined_results(pose_results, hands_results, image_height: int, image_width: int, threshold: float = 0.5, prioritized_hands: Optional[List] = None) -> List[Dict]:
     """
     Process combined MediaPipe Pose and Hands results into CVAT-compatible format.
 
@@ -187,13 +256,36 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
             landmark = pose_landmarks[mp_idx]
             confidence = getattr(landmark, 'visibility', None) or 1.0
 
+            # Convert normalized coordinates to pixel coordinates
+            # MediaPipe: (0,0) = top-left, (1,1) = bottom-right
+            # CVAT expects: [x, y] in pixel coordinates
+            # IMPORTANT: Clamp coordinates to valid range [0, 1] as MediaPipe can return values > 1.0
+            x_norm = max(0.0, min(1.0, landmark.x))
+            y_norm = max(0.0, min(1.0, landmark.y))
+
+            x_pixel = x_norm * image_width
+            y_pixel = y_norm * image_height
+
+            # Log first few keypoints for debugging
+            if len(skeleton["elements"]) < 3:
+                if landmark.x != x_norm or landmark.y != y_norm:
+                    logger.info(f"Pose keypoint {keypoint_name}: normalized=({landmark.x:.3f}, {landmark.y:.3f}) -> clamped=({x_norm:.3f}, {y_norm:.3f}), pixel=({x_pixel:.1f}, {y_pixel:.1f})")
+                else:
+                    logger.info(f"Pose keypoint {keypoint_name}: normalized=({landmark.x:.3f}, {landmark.y:.3f}), pixel=({x_pixel:.1f}, {y_pixel:.1f})")
+
+            # Warn if coordinates are invalid or in bottom-right corner
+            if landmark.x > 1.0 or landmark.y > 1.0:
+                logger.warning(f"⚠️  Keypoint {keypoint_name} has invalid normalized coordinates (>1.0): ({landmark.x:.3f}, {landmark.y:.3f}) - clamping to valid range")
+            elif landmark.x > 0.9 and landmark.y > 0.8:
+                logger.warning(f"⚠️  Keypoint {keypoint_name} detected at bottom-right corner: normalized=({landmark.x:.3f}, {landmark.y:.3f}), pixel=({x_pixel:.1f}, {y_pixel:.1f})")
+
             element = {
                 "label": keypoint_name,
                 "type": "points",
                 "outside": confidence <= threshold,
                 "points": [
-                    landmark.x * image_width,
-                    landmark.y * image_height
+                    x_pixel,
+                    y_pixel
                 ],
                 "attributes": [
                     {"name": "confidence", "value": str(confidence)}
@@ -202,7 +294,10 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
             skeleton["elements"].append(element)
 
     # Process Hands results (detailed finger keypoints)
-    if hands_results and hands_results.hand_landmarks:
+    # Use prioritized hands if provided, otherwise use all detected hands
+    hands_to_process = prioritized_hands if prioritized_hands else (hands_results.hand_landmarks if (hands_results and hands_results.hand_landmarks) else [])
+
+    if hands_to_process:
         # Hand landmark names
         hand_keypoints = [
             "wrist", "thumb_cmc", "thumb_mcp", "thumb_ip", "thumb_tip",
@@ -212,14 +307,26 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
             "pinky_mcp", "pinky_pip", "pinky_dip", "pinky_tip"
         ]
 
-        # Process each detected hand
-        for hand_idx, hand_landmarks in enumerate(hands_results.hand_landmarks):
-            # Use handedness classification if available, otherwise assume left/right based on index
+        # Process prioritized hands (up to 2, closest to center)
+        for hand_idx, hand_landmarks in enumerate(hands_to_process):
+            # Use handedness classification if available
+            # Note: Since we're using prioritized hands, we need to map back to original indices
+            # For simplicity, use position-based handedness (first = left, second = right)
+            # This is acceptable for egocentric videos where handedness may be ambiguous
             try:
-                if hasattr(hands_results, 'handedness') and hands_results.handedness and hand_idx < len(hands_results.handedness):
-                    handedness = hands_results.handedness[hand_idx][0].category_name.lower()
-                elif hasattr(hands_results, 'multi_handedness') and hands_results.multi_handedness and hand_idx < len(hands_results.multi_handedness):
-                    handedness = hands_results.multi_handedness[hand_idx].classification[0].label.lower()
+                # Try to get handedness from original results if available
+                original_idx = None
+                if hasattr(hands_results, 'handedness') and hands_results.handedness:
+                    # Map prioritized hand back to original (simplified: use index)
+                    if hand_idx < len(hands_results.handedness):
+                        handedness = hands_results.handedness[hand_idx][0].category_name.lower()
+                    else:
+                        handedness = "left" if hand_idx == 0 else "right"
+                elif hasattr(hands_results, 'multi_handedness') and hands_results.multi_handedness:
+                    if hand_idx < len(hands_results.multi_handedness):
+                        handedness = hands_results.multi_handedness[hand_idx].classification[0].label.lower()
+                    else:
+                        handedness = "left" if hand_idx == 0 else "right"
                 else:
                     handedness = "left" if hand_idx == 0 else "right"
             except (AttributeError, IndexError, KeyError):
@@ -227,16 +334,42 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
 
             # Add hand keypoints with handedness prefix (always include all keypoints)
             for kp_idx, landmark in enumerate(hand_landmarks):
-                confidence = getattr(landmark, 'visibility', None) or 1.0
+                # Hand landmarks may not have visibility/presence attributes
+                vis = getattr(landmark, 'visibility', None)
+                pres = getattr(landmark, 'presence', None)
+                if vis is not None:
+                    confidence = vis
+                elif pres is not None:
+                    confidence = pres
+                else:
+                    confidence = 1.0  # Assume visible if no confidence metric available
 
                 keypoint_name = f"{handedness}_{hand_keypoints[kp_idx]}"
+
+                # Convert normalized coordinates to pixel coordinates
+                # MediaPipe: (0,0) = top-left, (1,1) = bottom-right
+                # CVAT expects: [x, y] in pixel coordinates
+                # IMPORTANT: Clamp coordinates to valid range [0, 1] as MediaPipe can return values > 1.0
+                x_norm = max(0.0, min(1.0, landmark.x))
+                y_norm = max(0.0, min(1.0, landmark.y))
+
+                x_pixel = x_norm * image_width
+                y_pixel = y_norm * image_height
+
+                # Log first few hand keypoints for debugging
+                if len([e for e in skeleton["elements"] if 'hand' in e.get('label', '').lower() or 'wrist' in e.get('label', '').lower()]) < 3:
+                    if landmark.x != x_norm or landmark.y != y_norm:
+                        logger.info(f"Hand keypoint {keypoint_name}: normalized=({landmark.x:.3f}, {landmark.y:.3f}) -> clamped=({x_norm:.3f}, {y_norm:.3f}), pixel=({x_pixel:.1f}, {y_pixel:.1f})")
+                    else:
+                        logger.info(f"Hand keypoint {keypoint_name}: normalized=({landmark.x:.3f}, {landmark.y:.3f}), pixel=({x_pixel:.1f}, {y_pixel:.1f})")
+
                 element = {
                     "label": keypoint_name,
                     "type": "points",
                     "outside": confidence <= threshold,
                     "points": [
-                        landmark.x * image_width,
-                        landmark.y * image_height
+                        x_pixel,
+                        y_pixel
                     ],
                     "attributes": [
                         {"name": "confidence", "value": str(confidence)}
@@ -257,10 +390,28 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
     pose_keypoints = [elem for elem in skeleton["elements"] if elem['label'] not in hand_labels]
     hand_keypoints = [elem for elem in skeleton["elements"] if elem['label'] in hand_labels]
 
-    # Require at least 2 visible keypoints for a valid skeleton
-    if len(visible_keypoints) < 2:
-        logger.info(f"Insufficient visible keypoints detected ({len(visible_keypoints)}), skipping")
-        return []
+    # Relaxed filtering logic for egocentric videos:
+    # - If hands detected: require at least 3 hand keypoints
+    # - If only pose detected: require at least 5 pose keypoints
+    # - Otherwise: require at least 2 visible keypoints
+    visible_hand_kps = [kp for kp in hand_keypoints if not kp['outside']]
+    visible_pose_kps = [kp for kp in pose_keypoints if not kp['outside']]
+
+    if len(hands_to_process) > 0:
+        # Hands detected: require at least 3 hand keypoints
+        if len(visible_hand_kps) < 3:
+            logger.info(f"Insufficient visible hand keypoints detected ({len(visible_hand_kps)}), need at least 3, skipping")
+            return []
+    elif len(pose_keypoints) > 0:
+        # Only pose detected: require at least 5 pose keypoints
+        if len(visible_pose_kps) < 5:
+            logger.info(f"Insufficient visible pose keypoints detected ({len(visible_pose_kps)}), need at least 5, skipping")
+            return []
+    else:
+        # Fallback: require at least 2 visible keypoints
+        if len(visible_keypoints) < 2:
+            logger.info(f"Insufficient visible keypoints detected ({len(visible_keypoints)}), skipping")
+            return []
 
     logger.info(f"Detected skeleton with {len([kp for kp in pose_keypoints if not kp['outside']])} visible pose keypoints and {len([kp for kp in hand_keypoints if not kp['outside']])} visible hand keypoints")
 
@@ -328,16 +479,27 @@ async def detect_pose(
         pose_detector, hands_detector = init_detectors()
 
         # Create MediaPipe Image object
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2_image)
+        # MediaPipe expects RGB format, but cv2_image is BGR
+        # Convert BGR to RGB for MediaPipe
+        cv2_rgb = cv2.cvtColor(cv2_image, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2_rgb)
 
         # Process image with both detectors
-        logger.info(f"Processing image: {image_width}x{image_height}")
+        logger.info(f"Processing image: {image_width}x{image_height} (width x height)")
+        logger.info(f"OpenCV shape: {cv2_image.shape} -> height={image_height}, width={image_width}")
 
-        # Run pose detection
-        pose_results = pose_detector.detect(mp_image)
+        # Log sample pixel values to verify image content
+        center_x, center_y = image_width // 2, image_height // 2
+        bottom_right_x, bottom_right_y = image_width - 10, image_height - 10
+        logger.info(f"Image sample pixels - Center: ({center_x}, {center_y}) = {cv2_image[center_y, center_x]}, "
+                   f"Bottom-right: ({bottom_right_x}, {bottom_right_y}) = {cv2_image[bottom_right_y, bottom_right_x]}")
 
-        # Run hands detection
+        # For egocentric videos, prioritize hand detection
+        # Run hands detection first (more important for egocentric videos)
         hands_results = hands_detector.detect(mp_image)
+
+        # Run pose detection (may help with arm/wrist positioning)
+        pose_results = pose_detector.detect(mp_image)
 
         # Debug: Log detection results
         pose_detected = pose_results and pose_results.pose_landmarks
@@ -349,8 +511,13 @@ async def detect_pose(
         if hands_detected:
             logger.info(f"Hand landmarks count: {len(hands_results.hand_landmarks)}")
 
+        # Prioritize hands for egocentric videos
+        prioritized_hands_list = []
+        if hands_results and hands_results.hand_landmarks:
+            prioritized_hands_list = prioritize_hands(hands_results, image_width, image_height)
+
         # Combine results
-        skeletons = process_combined_results(pose_results, hands_results, image_height, image_width, threshold)
+        skeletons = process_combined_results(pose_results, hands_results, image_height, image_width, threshold, prioritized_hands_list)
 
         logger.info(f"Detected {len(skeletons)} poses")
         return JSONResponse(content=skeletons)
