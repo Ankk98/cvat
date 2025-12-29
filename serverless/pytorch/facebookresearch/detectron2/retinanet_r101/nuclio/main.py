@@ -1,3 +1,14 @@
+"""
+RetinaNet R101 Object Detection for CVAT
+========================================
+
+Original RetinaNet implementation for object detection.
+Outputs bounding boxes (rectangles), not masks.
+
+Model: COCO-Detection/retinanet_R_101_FPN_3x
+Output: Object detection with bounding boxes
+"""
+
 import json
 import base64
 import io
@@ -49,10 +60,12 @@ def handler(context, event):
     for box, score, label in zip(pred_boxes, scores, pred_classes):
         label = COCO_CATEGORIES[int(label)]["name"]
         if score >= threshold:
+            # Convert NumPy float types to native Python types for JSON serialization
+            box_list = [float(x) for x in box.tolist()]
             results.append({
                 "confidence": str(float(score)),
                 "label": label,
-                "points": box.tolist(),
+                "points": box_list,
                 "type": "rectangle",
             })
 

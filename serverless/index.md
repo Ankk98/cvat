@@ -132,7 +132,8 @@ cd mediapipe-service
 |-------|-------------|-------------|------------------|
 | **SAM (Interactive)** | 100% (3/3 images) | ~9.2s avg | Interactive segmentation masks for hands/objects |
 | **SAM (Auto)** | 100% (13/13 images) | ~2.0s avg | Automatic object segmentation without user interaction |
-| **Detectron2** | 100% (1/1 images) | ~2.1s avg | Instance segmentation for kitchen scenes |
+| **Detectron2 RetinaNet** | 100% (tested) | ~2.1s avg | Object detection with bounding boxes |
+| **Detectron2 Mask R-CNN** | 100% (tested) | ~2.5s avg | ✅ **PRODUCTION READY** - Instance segmentation with masks, correctly renders in CVAT |
 | **MediaPipe Pose + Hands** | 100% (frames tested) | ~0.03s avg | **✅ FULLY WORKING** - 57 keypoints (33 body + 24 hand) in CVAT auto-annotation, skeleton rendering fixed |
 
 #### ⚠️ **Models Needing Fixes**
@@ -157,7 +158,8 @@ cd mediapipe-service
 |-------|------|---------|--------------|--------|
 | **SAM (Interactive)** | [`facebookresearch/sam/`](./pytorch/facebookresearch/sam/) | Interactive segmentation for hands/objects | ✅ Full | ✅ Working |
 | **SAM (Auto)** | [`facebookresearch/sam/`](./pytorch/facebookresearch/sam/) | Automatic object segmentation | ✅ Full | ✅ **Tested & Working** |
-| **Detectron2** | [`facebookresearch/detectron2/retinanet_r101/`](./pytorch/facebookresearch/detectron2/retinanet_r101/) | Instance segmentation | ✅ Full | ✅ Working |
+| **Detectron2 RetinaNet R101** | [`facebookresearch/detectron2/retinanet_r101/`](./pytorch/facebookresearch/detectron2/retinanet_r101/) | Object detection (bounding boxes) | ✅ Full | ✅ Working |
+| **Detectron2 Mask R-CNN R50** | [`facebookresearch/detectron2/mask_rcnn_r50_rocm/`](./pytorch/facebookresearch/detectron2/mask_rcnn_r50_rocm/) | Instance segmentation (masks) | ✅ Full | ✅ **Production Ready** - Masks render correctly in CVAT |
 | **MMPose** | [`mmpose/hrnet32/`](./pytorch/mmpose/hrnet32/) | Whole-body pose estimation | ❌ CPU only | ⚠️ Needs fixes |
 | **YOLO11 Pose** | [`ultralytics/yolov11-pose/`](./pytorch/ultralytics/yolov11-pose/) | Real-time pose estimation | ❌ CPU only | ⚠️ Needs fixes |
 | **MediaPipe Pose + Hands** | [`mediapipe-service/`](./mediapipe-service/) | **✅ CVAT INTEGRATED** - 57-point pose + hand tracking (33 body + 24 hand), skeleton rendering fixed | ✅ **Production Ready** | 🚀 Standalone service |
@@ -262,7 +264,13 @@ cd mediapipe-service
 ./deploy_egocentric_models.sh
 
 # Deploy specific models
-./deploy_egocentric_models.sh --sam --detectron2
+./deploy_egocentric_models.sh --sam --detectron2 --mask-rcnn
+
+# Deploy Mask R-CNN only (instance segmentation)
+./deploy_egocentric_models.sh --mask-rcnn
+
+# Deploy RetinaNet only (object detection)
+./deploy_egocentric_models.sh --detectron2
 
 # Force CPU deployment
 ./deploy_egocentric_models.sh --cpu --mmpose
@@ -291,10 +299,10 @@ cd mediapipe-service
 | Task | Current Best | Target SOTA | Accuracy Gain | Status |
 |------|-------------|-------------|---------------|--------|
 | **Interactive Segmentation** | SAM | SAM 2.0 | +10-20% | ✅ Working |
-| **Instance Segmentation** | Mask R-CNN | BEiT3/MaskDINO | +35-45% | ✅ Working |
+| **Instance Segmentation** | Mask R-CNN R50 | BEiT3/MaskDINO | +35-45% | ✅ **Production Ready** - Masks render correctly in CVAT |
 | **Semantic Segmentation** | ADAS Model | OneFormer | Massive | ❌ Needs implementation |
 | **Pose Estimation** | MediaPipe Pose + Hands | YOLO11/DETRPose | +0.4-5% | ✅ **Complete hand tracking, skeleton rendering fixed** |
-| **Object Detection** | YOLOv7 | YOLO11 | +5-10% | ❌ Needs implementation |
+| **Object Detection** | RetinaNet R101 | YOLO11 | +5-10% | ✅ Working |
 
 ### Hardware Acceleration
 
@@ -329,6 +337,7 @@ nuctl get functions
  NAMESPACE | NAME                                | PROJECT | STATE | REPLICAS | NODE PORT
  nuclio    | pth-facebookresearch-sam-vit-h-rocm | cvat    | ready | 1/1      | 32768
  nuclio    | pth-facebookresearch-detectron2-retinanet-r101-rocm | cvat    | ready | 1/1      | 32769
+ nuclio    | pth-facebookresearch-detectron2-mask-rcnn-r50-rocm | cvat    | ready | 1/1      | 32770
 ```
 
 ### Test the Models
@@ -338,8 +347,13 @@ curl -X POST http://localhost:32768 \
   -H "Content-Type: application/json" \
   -d '{"image": "base64_encoded_image_data"}'
 
-# Test Detectron2 instance segmentation
+# Test Detectron2 RetinaNet (object detection - bounding boxes)
 curl -X POST http://localhost:32769 \
+  -H "Content-Type: application/json" \
+  -d '{"image": "base64_encoded_image_data"}'
+
+# Test Detectron2 Mask R-CNN (instance segmentation - masks)
+curl -X POST http://localhost:32770 \
   -H "Content-Type: application/json" \
   -d '{"image": "base64_encoded_image_data"}'
 ```

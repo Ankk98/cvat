@@ -12,7 +12,8 @@
 #   --all           Deploy all available egocentric models (default)
 #   --sam           Deploy SAM for interactive segmentation only
 #   --sam-auto      Deploy SAM Auto for automatic segmentation only
-#   --detectron2    Deploy Detectron2 RetinaNet for instance segmentation only
+#   --detectron2    Deploy Detectron2 RetinaNet for object detection only
+#   --mask-rcnn     Deploy Detectron2 Mask R-CNN for instance segmentation only
 #   --mmpose        Deploy MMPose for hand pose estimation only
 #   --cpu           Use CPU deployment instead of ROCm (for models without ROCm support)
 #   --toolbox       Use toolbox deployment instead of host deployment
@@ -38,6 +39,7 @@ DEPLOY_ALL=true
 DEPLOY_SAM=false
 DEPLOY_SAM_AUTO=false
 DEPLOY_DETECTRON2=false
+DEPLOY_MASK_RCNN=false
 DEPLOY_MMPOSE=false
 DEPLOY_MEDIAPIPE=false
 DEPLOY_MEDIAPIPE_SERVICE=false
@@ -83,7 +85,8 @@ OPTIONS:
     --all                   Deploy all available egocentric models (default)
     --sam                   Deploy SAM for interactive segmentation only
     --sam-auto              Deploy SAM Auto for automatic segmentation only
-    --detectron2            Deploy Detectron2 RetinaNet for instance segmentation only
+    --detectron2            Deploy Detectron2 RetinaNet for object detection only
+    --mask-rcnn             Deploy Detectron2 Mask R-CNN for instance segmentation only
     --mmpose                Deploy MMPose for hand pose estimation only
         --mediapipe             Deploy MediaPipe standalone service for pose estimation (deprecated - use --mediapipe-service)
     --mediapipe-service     Setup and start MediaPipe standalone service (FastAPI)
@@ -108,7 +111,8 @@ EXAMPLES:
 
 MODELS INCLUDED:
     • SAM (Segment Anything) - Interactive segmentation for precise hand/object annotation
-    • Detectron2 RetinaNet R101 - Instance segmentation for egocentric scenes
+    • Detectron2 RetinaNet R101 - Object detection with bounding boxes for egocentric scenes
+    • Detectron2 Mask R-CNN R50 - Instance segmentation with masks for precise object boundaries
     • MMPose HRNet-W32 - Hand pose estimation for first-person view tracking
     • MediaPipe Pose (Nuclio) - Lightweight 33-keypoint pose estimation (fast CPU inference)
     • MediaPipe Service - Standalone FastAPI service for direct CVAT integration
@@ -135,6 +139,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --detectron2)
             DEPLOY_DETECTRON2=true
+            DEPLOY_ALL=false
+            shift
+            ;;
+        --mask-rcnn)
+            DEPLOY_MASK_RCNN=true
             DEPLOY_ALL=false
             shift
             ;;
@@ -480,6 +489,7 @@ log_info "ROCm acceleration: $( [[ "$USE_ROCM" = true ]] && echo "enabled" || ec
 if [[ "$DEPLOY_ALL" = true ]]; then
     DEPLOY_SAM=true
     DEPLOY_DETECTRON2=true
+    DEPLOY_MASK_RCNN=true
     DEPLOY_MMPOSE=true
     DEPLOY_MEDIAPIPE=true
 fi
@@ -571,15 +581,27 @@ if [[ "$DEPLOY_SAM_AUTO" = true ]]; then
     log_info "SAM Auto processing block completed, moving to next model..."
 fi
 
-# Detectron2 RetinaNet - Instance Segmentation
+# Detectron2 RetinaNet - Object Detection
 if [[ "$DEPLOY_DETECTRON2" = true ]]; then
-    log_info "Processing Detectron2 deployment..."
-    if deploy_model "Detectron2 RetinaNet R101 (Instance Segmentation)" "$SCRIPT_DIR/pytorch/facebookresearch/detectron2/retinanet_r101" "ROCm"; then
+    log_info "Processing Detectron2 RetinaNet deployment..."
+    if deploy_model "Detectron2 RetinaNet R101 (Object Detection)" "$SCRIPT_DIR/pytorch/facebookresearch/detectron2/retinanet_r101" "ROCm"; then
         ((deployed_count++))
-        log_info "Detectron2 deployment completed successfully"
+        log_info "Detectron2 RetinaNet deployment completed successfully"
     else
         ((failed_count++))
-        log_error "Detectron2 deployment failed"
+        log_error "Detectron2 RetinaNet deployment failed"
+    fi
+fi
+
+# Detectron2 Mask R-CNN - Instance Segmentation
+if [[ "$DEPLOY_MASK_RCNN" = true ]]; then
+    log_info "Processing Detectron2 Mask R-CNN deployment..."
+    if deploy_model "Detectron2 Mask R-CNN R50 (Instance Segmentation)" "$SCRIPT_DIR/pytorch/facebookresearch/detectron2/mask_rcnn_r50_rocm" "ROCm"; then
+        ((deployed_count++))
+        log_info "Detectron2 Mask R-CNN deployment completed successfully"
+    else
+        ((failed_count++))
+        log_error "Detectron2 Mask R-CNN deployment failed"
     fi
 fi
 
