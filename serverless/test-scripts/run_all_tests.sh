@@ -73,7 +73,6 @@ REQUIREMENTS:
 OUTPUT:
     - Test results in ./test-results/
     - Analysis reports in ./test-results/analysis/
-    - Performance charts and visualizations
 EOF
 }
 

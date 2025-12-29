@@ -156,23 +156,39 @@ class Detectron2EgocentricTester:
         }
 
         # Analyze Detectron2 results
-        if "annotations" in detectron_result:
-            annotations = detectron_result["annotations"]
+        # Detectron2 returns a list directly, not wrapped in "annotations"
+        annotations = detectron_result if isinstance(detectron_result, list) else detectron_result.get("annotations", [])
+
+        if len(annotations) > 0:
             analysis["has_detections"] = True
             analysis["detection_count"] = len(annotations)
 
             for ann in annotations:
-                class_id = ann.get("label", 0)
-                class_name = self.coco_classes.get(class_id, "unknown")
-                confidence = ann.get("confidence", 0)
+                label_name = ann.get("label", "unknown")
+                class_name = label_name  # Detectron2 returns COCO category names directly
+                confidence = float(ann.get("confidence", 0))
+                ann_type = ann.get("type", "unknown")
+                points = ann.get("points", [])
 
                 detection_info = {
-                    "class_id": class_id,
                     "class_name": class_name,
                     "confidence": confidence,
-                    "bbox": ann.get("bbox", []),
-                    "mask_area": ann.get("mask_area", 0)
+                    "type": ann_type,
+                    "points_length": len(points),
+                    "has_mask": ann_type == "mask",
                 }
+
+                # Extract bbox from points
+                if ann_type == "mask" and len(points) >= 4:
+                    # Last 4 values are bbox: [x_min, y_min, x_max, y_max]
+                    bbox = points[-4:]
+                    detection_info["bbox"] = bbox
+                    detection_info["rle_length"] = len(points) - 4
+                elif ann_type == "rectangle" and len(points) == 4:
+                    # Points are bbox: [x1, y1, x2, y2]
+                    detection_info["bbox"] = points
+                else:
+                    detection_info["bbox"] = []
 
                 analysis["detections"].append(detection_info)
 

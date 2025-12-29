@@ -92,6 +92,9 @@ cd mediapipe-service
 | [`test_real_images.py`](./test-scripts/test_real_images.py) | **Primary testing tool** for real images | Downloads real images, comprehensive model testing, performance metrics |
 | [`test_sam_egocentric.py`](./test-scripts/test_sam_egocentric.py) | SAM-specific testing | Interactive segmentation validation, hand detection metrics |
 | [`test_detectron2_egocentric.py`](./test-scripts/test_detectron2_egocentric.py) | Detectron2 instance segmentation testing | Kitchen scene analysis, object detection accuracy |
+| [`test_detectron2_masks.py`](./test-scripts/test_detectron2_masks.py) | Mask R-CNN format validation | Verifies flattened pixels format, mask rendering |
+| [`test_frontend_mask_rendering.py`](./test-scripts/test_frontend_mask_rendering.py) | Frontend mask rendering test | Simulates CVAT frontend RLE decoding |
+| [`check_cvat_annotations.py`](./test-scripts/check_cvat_annotations.py) | CVAT annotation inspector | Validates stored annotations format |
 | [`test_mediapipe_egocentric.py`](./test-scripts/test_mediapipe_egocentric.py) | MediaPipe pose estimation testing | Body pose + hand joint tracking validation |
 | [`download_real_images.py`](./test-scripts/download_real_images.py) | **Real image downloader** | Fetches egocentric images from Unsplash, creates test datasets |
 
@@ -133,7 +136,7 @@ cd mediapipe-service
 | **SAM (Interactive)** | 100% (3/3 images) | ~9.2s avg | Interactive segmentation masks for hands/objects |
 | **SAM (Auto)** | 100% (13/13 images) | ~2.0s avg | Automatic object segmentation without user interaction |
 | **Detectron2 RetinaNet** | 100% (tested) | ~2.1s avg | Object detection with bounding boxes |
-| **Detectron2 Mask R-CNN** | 100% (tested) | ~2.5s avg | ✅ **PRODUCTION READY** - Instance segmentation with masks, correctly renders in CVAT |
+| **Detectron2 Mask R-CNN** | 100% (tested) | ~2.5s avg | ✅ **PRODUCTION READY** - Instance segmentation with masks (flattened pixels format), correctly renders in CVAT |
 | **MediaPipe Pose + Hands** | 100% (frames tested) | ~0.03s avg | **✅ FULLY WORKING** - 57 keypoints (33 body + 24 hand) in CVAT auto-annotation, skeleton rendering fixed |
 
 #### ⚠️ **Models Needing Fixes**
