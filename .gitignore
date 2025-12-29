@@ -86,3 +86,6 @@ cvat-ui/dist
 **/!.yarn/versions
 
 nuctl*
+
+# Temporary documentation
+tmp-docs/
