@@ -2,7 +2,12 @@
 
 ## Overview
 
-This document confirms that `mediapipe-hands-skeleton.json` and `detectron2-egocentric-masks.json` can be used together in the same CVAT project without conflicts.
+This document confirms that MediaPipe hands skeleton (generated from `generate_skeleton_configs.py`) and `detectron2-egocentric-masks.json` can be used together in the same CVAT project without conflicts.
+
+**Note:** To generate `mediapipe-hands-skeleton.json`, run:
+```bash
+python3 generate_skeleton_configs.py
+```
 
 ## Compatibility Analysis
 
@@ -45,6 +50,7 @@ This document confirms that `mediapipe-hands-skeleton.json` and `detectron2-egoc
 
 1. **Create or open CVAT project**
 2. **Import hands skeleton:**
+   - First, generate `mediapipe-hands-skeleton.json` by running `python3 generate_skeleton_configs.py`
    - Go to Labels → Import
    - Select `mediapipe-hands-skeleton.json`
    - Verify skeleton "hands" is created with 42 sublabels

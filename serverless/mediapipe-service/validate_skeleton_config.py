@@ -151,13 +151,22 @@ class SkeletonValidator:
             raise ValidationError("SVG must contain at least one circle (keypoint)")
 
         # Validate circles have required attributes
+        # CVAT import format uses data-label-name, stored format uses data-label-id
         for idx, circle in enumerate(circles):
-            required_attrs = ['data-node-id', 'data-label-id']
+            required_attrs = ['data-node-id']
             for attr in required_attrs:
                 if attr not in circle.attrib:
                     raise ValidationError(
                         f"Circle {idx}: missing required attribute '{attr}'"
                     )
+
+            # Must have either data-label-id OR data-label-name
+            has_label_id = 'data-label-id' in circle.attrib
+            has_label_name = 'data-label-name' in circle.attrib
+            if not has_label_id and not has_label_name:
+                raise ValidationError(
+                    f"Circle {idx}: missing required attribute 'data-label-id' or 'data-label-name'"
+                )
 
         # Validate lines (edges) have required attributes
         for idx, line in enumerate(lines):
@@ -263,34 +272,42 @@ class SkeletonValidator:
                 sublabel_id_to_name[sublabel_id] = name
 
         # Check circles: data-node-id should match sublabel name
-        # and data-label-id should match sublabel id
+        # and data-label-id (if present) should match sublabel id
+        # or data-label-name (if present) should match sublabel name
         for circle in self.svg_root.findall('.//circle'):
             node_id = circle.attrib.get('data-node-id')
             label_id = circle.attrib.get('data-label-id')
+            label_name = circle.attrib.get('data-label-name')
 
             if node_id:
-                # Try to parse label_id as integer
-                try:
-                    label_id_int = int(label_id) if label_id else None
-                except (ValueError, TypeError):
-                    self.errors.append(
-                        f"Circle with node-id='{node_id}': data-label-id='{label_id}' is not a valid integer"
-                    )
-                    continue
-
                 # Check if node_id matches a sublabel name
                 if node_id not in sublabel_name_to_id:
                     self.errors.append(
                         f"Circle with node-id='{node_id}': no matching sublabel with name '{node_id}'"
                     )
                 else:
-                    # Check if label_id matches sublabel id
-                    expected_id = sublabel_name_to_id[node_id]
-                    if label_id_int != expected_id:
-                        self.errors.append(
-                            f"Circle with node-id='{node_id}': data-label-id='{label_id}' "
-                            f"does not match sublabel id '{expected_id}'"
-                        )
+                    # If data-label-id is present, check it matches sublabel id
+                    if label_id:
+                        try:
+                            label_id_int = int(label_id)
+                            expected_id = sublabel_name_to_id[node_id]
+                            if label_id_int != expected_id:
+                                self.errors.append(
+                                    f"Circle with node-id='{node_id}': data-label-id='{label_id}' "
+                                    f"does not match sublabel id '{expected_id}'"
+                                )
+                        except (ValueError, TypeError):
+                            self.errors.append(
+                                f"Circle with node-id='{node_id}': data-label-id='{label_id}' is not a valid integer"
+                            )
+
+                    # If data-label-name is present, check it matches sublabel name
+                    if label_name:
+                        if label_name != node_id:
+                            self.errors.append(
+                                f"Circle with node-id='{node_id}': data-label-name='{label_name}' "
+                                f"does not match sublabel name '{node_id}'"
+                            )
 
     def _validate_completeness(self):
         """Validate completeness of skeleton structure."""

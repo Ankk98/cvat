@@ -27,6 +27,17 @@ echo "Deploying MediaPipe Pose Nuclio Function"
 echo "=========================================="
 echo ""
 
+# Prepare function.yaml by injecting skeleton spec
+PARENT_DIR="$( cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd )"
+SPEC_FILE="$PARENT_DIR/mediapipe-skeletons-raw-editor.json"
+if [[ -f "$SCRIPT_DIR/prepare_function_yaml.py" ]] && [[ -f "$SPEC_FILE" ]]; then
+    echo "Preparing function.yaml with skeleton spec..."
+    python3 "$SCRIPT_DIR/prepare_function_yaml.py" "$SPEC_FILE" "$SCRIPT_DIR/function.yaml" || {
+        echo "Warning: Failed to prepare function.yaml, continuing with existing file..."
+    }
+    echo ""
+fi
+
 # Check if MediaPipe service is running
 echo "Checking MediaPipe service status..."
 if curl -s -f http://localhost:8000/health > /dev/null 2>&1; then

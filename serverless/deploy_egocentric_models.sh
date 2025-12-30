@@ -574,7 +574,7 @@ if [[ "$DEPLOY_MEDIAPIPE" = true ]]; then
         ((attempt++))
     done
 
-    # Step 4: Deploy Nuclio function
+    # Step 4: Prepare function.yaml with skeleton spec
     nuclio_path="$mediapipe_dir/nuclio"
     if [[ ! -d "$nuclio_path" ]]; then
         log_error "Nuclio function directory not found: $nuclio_path"
@@ -586,6 +586,22 @@ if [[ "$DEPLOY_MEDIAPIPE" = true ]]; then
         exit 1
     fi
 
+    # Prepare function.yaml by injecting skeleton spec from JSON file
+    prepare_script="$nuclio_path/prepare_function_yaml.py"
+    spec_file="$mediapipe_dir/mediapipe-skeletons-raw-editor.json"
+
+    if [[ -f "$prepare_script" ]] && [[ -f "$spec_file" ]]; then
+        log_info "Preparing function.yaml with skeleton spec..."
+        if python3 "$prepare_script" "$spec_file" "$nuclio_path/function.yaml"; then
+            log_success "function.yaml prepared successfully"
+        else
+            log_warning "Failed to prepare function.yaml, continuing with existing file..."
+        fi
+    else
+        log_warning "prepare_function_yaml.py or skeleton JSON not found, skipping spec injection"
+    fi
+
+    # Step 5: Deploy Nuclio function
     log_info "Deploying MediaPipe Nuclio function..."
     if deploy_cpu_model "$nuclio_path" "MediaPipe Pose + Hands"; then
         log_success "MediaPipe Nuclio function deployed successfully"
