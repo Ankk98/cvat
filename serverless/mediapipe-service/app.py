@@ -58,14 +58,18 @@ def init_detectors():
     if pose_detector is None:
         logger.info("Initializing MediaPipe Pose detector...")
 
-        # Download pose landmarker model if not present
+        # Use pre-downloaded pose landmarker model (downloaded during Docker build)
         pose_model_path = "/tmp/pose_landmarker_lite.task"
         if not os.path.exists(pose_model_path):
-            logger.info("Downloading pose landmarker model...")
+            logger.warning("Pose model not found at /tmp/pose_landmarker_lite.task, attempting download...")
             import urllib.request
             pose_url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
-            urllib.request.urlretrieve(pose_url, pose_model_path)
-            logger.info("Pose model downloaded successfully")
+            try:
+                urllib.request.urlretrieve(pose_url, pose_model_path)
+                logger.info("Pose model downloaded successfully")
+            except Exception as e:
+                logger.error(f"Failed to download pose model: {e}")
+                raise
 
         # Create pose landmarker options
         # Lower thresholds for egocentric videos (was 0.5, now 0.3)
@@ -89,14 +93,18 @@ def init_detectors():
     if hands_detector is None:
         logger.info("Initializing MediaPipe Hands detector...")
 
-        # Download hand landmarker model if not present
+        # Use pre-downloaded hand landmarker model (downloaded during Docker build)
         hands_model_path = "/tmp/hand_landmarker.task"
         if not os.path.exists(hands_model_path):
-            logger.info("Downloading hand landmarker model...")
+            logger.warning("Hand model not found at /tmp/hand_landmarker.task, attempting download...")
             import urllib.request
-            hands_url = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task"
-            urllib.request.urlretrieve(hands_url, hands_model_path)
-            logger.info("Hand model downloaded successfully")
+            hands_url = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+            try:
+                urllib.request.urlretrieve(hands_url, hands_model_path)
+                logger.info("Hand model downloaded successfully")
+            except Exception as e:
+                logger.error(f"Failed to download hand model: {e}")
+                raise
 
         # Create hand landmarker options
         # Lower thresholds for egocentric videos (was 0.5, now 0.3)

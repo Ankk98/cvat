@@ -42,7 +42,6 @@ DEPLOY_DETECTRON2=false
 DEPLOY_MASK_RCNN=false
 DEPLOY_MMPOSE=false
 DEPLOY_MEDIAPIPE=false
-DEPLOY_MEDIAPIPE_SERVICE=false
 STOP_SERVICES=false
 USE_ROCM=true
 USE_TOOLBOX=false
@@ -88,8 +87,7 @@ OPTIONS:
     --detectron2            Deploy Detectron2 RetinaNet for object detection only
     --mask-rcnn             Deploy Detectron2 Mask R-CNN for instance segmentation only
     --mmpose                Deploy MMPose for hand pose estimation only
-        --mediapipe             Deploy MediaPipe standalone service for pose estimation (deprecated - use --mediapipe-service)
-    --mediapipe-service     Setup and start MediaPipe standalone service (FastAPI)
+    --mediapipe             Deploy MediaPipe pose + hands detection (automatically manages service and Nuclio function)
     --stop                  Stop deployed services (Nuclio functions and MediaPipe service)
     --cpu                   Use CPU deployment instead of ROCm
     --toolbox               Use toolbox deployment instead of host deployment
@@ -106,7 +104,7 @@ EXAMPLES:
     $0 --sam --cpu                  # Deploy only SAM on CPU
     $0 --toolbox --toolbox-name my-toolbox
     $0 --mmpose --detectron2        # Deploy specific models
-    $0 --mediapipe-service          # Setup and start MediaPipe standalone service
+    $0 --mediapipe                  # Deploy MediaPipe (automatically manages service and Nuclio function)
     $0 --stop                       # Stop all deployed services
 
 MODELS INCLUDED:
@@ -114,8 +112,7 @@ MODELS INCLUDED:
     • Detectron2 RetinaNet R101 - Object detection with bounding boxes for egocentric scenes
     • Detectron2 Mask R-CNN R50 - Instance segmentation with masks for precise object boundaries
     • MMPose HRNet-W32 - Hand pose estimation for first-person view tracking
-    • MediaPipe Pose (Nuclio) - Lightweight 33-keypoint pose estimation (fast CPU inference)
-    • MediaPipe Service - Standalone FastAPI service for direct CVAT integration
+    • MediaPipe - Pose + hands detection (57 keypoints: body + hands) with automatic service management
 
 EOF
 }
@@ -154,11 +151,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --mediapipe)
             DEPLOY_MEDIAPIPE=true
-            DEPLOY_ALL=false
-            shift
-            ;;
-        --mediapipe-service)
-            DEPLOY_MEDIAPIPE_SERVICE=true
             DEPLOY_ALL=false
             shift
             ;;
@@ -241,12 +233,17 @@ deploy_cpu_model() {
     fi
 
     # Deploy using nuctl directly
+    # Use container name for Docker network communication (maintainable)
+    # Container name 'mediapipe-pose' is accessible from any container on cvat_cvat network
+    local mediapipe_url="${MEDIAPIPE_SERVICE_URL:-http://mediapipe-pose:8000}"
+
     nuctl deploy --project-name cvat \
         --path "$path" \
         --file "$func_config" \
         --platform local \
         --env CVAT_FUNCTIONS_REDIS_HOST=cvat_redis_ondisk \
         --env CVAT_FUNCTIONS_REDIS_PORT=6666 \
+        --env MEDIAPIPE_SERVICE_URL="$mediapipe_url" \
         --platform-config '{"attributes": {"network": "cvat_cvat"}}'
 }
 
@@ -285,7 +282,7 @@ setup_mediapipe_service() {
 start_mediapipe_service() {
     local mediapipe_dir="$SCRIPT_DIR/mediapipe-service"
 
-    log_info "Starting MediaPipe standalone service..."
+    log_info "Starting MediaPipe service as Docker container..."
 
     if [[ ! -d "$mediapipe_dir" ]]; then
         log_error "MediaPipe service directory not found: $mediapipe_dir"
@@ -294,46 +291,51 @@ start_mediapipe_service() {
 
     cd "$mediapipe_dir"
 
-    # Check if virtual environment exists
-    if [[ ! -d ".venv" ]]; then
-        log_warning "Virtual environment not found. Setting up service first..."
-        setup_mediapipe_service
-    fi
-
-    # Check if start script exists
-    if [[ ! -f "start.sh" ]]; then
-        log_error "Start script not found. Service may not be properly set up."
-        return 1
-    fi
-
-    # Check if already running
-    if [[ -f "status.sh" ]] && ./status.sh 2>/dev/null | grep -q "is running"; then
-        log_info "MediaPipe service is already running"
+    # Check if MediaPipe container is already running
+    if docker ps --format '{{.Names}}' | grep -q '^mediapipe-pose$'; then
+        log_info "MediaPipe service container is already running"
         return 0
     fi
 
-    # Start the service in background
-    log_info "Starting MediaPipe service..."
-    ./start.sh &
-    local service_pid=$!
+    # Check if container exists but is stopped
+    if docker ps -a --format '{{.Names}}' | grep -q '^mediapipe-pose$'; then
+        log_info "Starting existing MediaPipe service container..."
+        docker start mediapipe-pose
+        if [[ $? -eq 0 ]]; then
+            log_success "MediaPipe service container started"
+            return 0
+        fi
+    fi
 
-    # Wait a bit for service to start
-    sleep 3
-
-    # Check if service started successfully
-    if [[ -f "status.sh" ]] && ./status.sh 2>/dev/null | grep -q "is running"; then
-        log_success "MediaPipe service started successfully (PID: $service_pid)"
-        return 0
+    # Build and start using docker-compose
+    log_info "Building and starting MediaPipe service container..."
+    if docker compose up -d --build; then
+        log_success "MediaPipe service container started successfully"
+        # Wait for service to be healthy
+        log_info "Waiting for MediaPipe service to be ready..."
+        local max_attempts=30
+        local attempt=0
+        while [[ $attempt -lt $max_attempts ]]; do
+            if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+                log_success "MediaPipe service is healthy"
+                return 0
+            fi
+            sleep 2
+            ((attempt++))
+        done
+        log_warning "MediaPipe service started but health check timed out"
+        return 0  # Still return success, service might be starting
     else
-        log_error "Failed to start MediaPipe service"
+        log_error "Failed to start MediaPipe service container"
         return 1
     fi
+
 }
 
 stop_mediapipe_service() {
     local mediapipe_dir="$SCRIPT_DIR/mediapipe-service"
 
-    log_info "Stopping MediaPipe standalone service..."
+    log_info "Stopping MediaPipe service container..."
 
     if [[ ! -d "$mediapipe_dir" ]]; then
         log_warning "MediaPipe service directory not found: $mediapipe_dir"
@@ -342,49 +344,36 @@ stop_mediapipe_service() {
 
     cd "$mediapipe_dir"
 
-    # Check if stop script exists
-    if [[ ! -f "stop.sh" ]]; then
-        log_warning "Stop script not found. Service may not be set up."
+    # Check if container is running
+    if ! docker ps --format '{{.Names}}' | grep -q '^mediapipe-pose$'; then
+        log_info "MediaPipe service container is not running"
         return 0
     fi
 
-    # Check if running
-    if [[ -f "status.sh" ]] && ! ./status.sh 2>/dev/null | grep -q "is running"; then
-        log_info "MediaPipe service is not running"
-        return 0
-    fi
-
-    # Stop the service
-    log_info "Stopping MediaPipe service..."
-    ./stop.sh
-
-    # Verify stopped
-    sleep 2
-    if [[ -f "status.sh" ]] && ! ./status.sh 2>/dev/null | grep -q "is running"; then
-        log_success "MediaPipe service stopped successfully"
+    # Stop using docker-compose
+    log_info "Stopping MediaPipe service container..."
+    if docker compose down; then
+        log_success "MediaPipe service container stopped successfully"
         return 0
     else
-        log_warning "MediaPipe service may still be running"
+        log_warning "Failed to stop MediaPipe service container"
         return 1
     fi
 }
 
 check_mediapipe_service_status() {
-    local mediapipe_dir="$SCRIPT_DIR/mediapipe-service"
-
-    if [[ ! -d "$mediapipe_dir" ]]; then
-        echo "MediaPipe service: Directory not found"
+    # Check Docker container status
+    if docker ps --format '{{.Names}}\t{{.Status}}' | grep -q '^mediapipe-pose'; then
+        docker ps --format '{{.Names}}\t{{.Status}}' | grep '^mediapipe-pose'
+        return 0
+    elif docker ps -a --format '{{.Names}}\t{{.Status}}' | grep -q '^mediapipe-pose'; then
+        docker ps -a --format '{{.Names}}\t{{.Status}}' | grep '^mediapipe-pose'
+        echo "MediaPipe service: Container exists but is stopped"
+        return 1
+    else
+        echo "MediaPipe service: Container not found"
         return 1
     fi
-
-    cd "$mediapipe_dir"
-
-    if [[ ! -f "status.sh" ]]; then
-        echo "MediaPipe service: Not set up"
-        return 1
-    fi
-
-    ./status.sh 2>/dev/null || echo "MediaPipe service: Unable to check status"
 }
 
 # Check if deployer script exists and is executable
@@ -496,29 +485,63 @@ fi
 
 # Handle stop services option
 if [[ "$STOP_SERVICES" = true ]]; then
-    log_info "Stopping deployed services..."
+    log_info "Stopping all deployed services..."
 
-    # Stop Nuclio functions
-    log_info "Stopping Nuclio functions..."
-    nuctl get functions --platform local 2>/dev/null | grep -E "(pth-|omz-)" | awk '{print $2}' | while read -r func_name; do
-        if [[ -n "$func_name" ]]; then
+    # Hard-coded list of egocentric-related Nuclio functions to stop
+    EGOCENTRIC_FUNCTIONS=(
+        "pth-facebookresearch-sam-vit-h"
+        "pth-facebookresearch-sam-auto"
+        "pth-facebookresearch-detectron2-retinanet-r101-rocm"
+        "pth-facebookresearch-detectron2-mask-rcnn-r50-rocm"
+        "pth-mmpose-hrnet32"
+        "pth-google-mediapipe-pose-hands"
+    )
+
+    log_info "Stopping Nuclio functions related to egocentric models..."
+    stopped_count=0
+
+    for func_name in "${EGOCENTRIC_FUNCTIONS[@]}"; do
+        # Check if function exists before trying to delete
+        if nuctl get function "$func_name" --platform local > /dev/null 2>&1; then
             log_info "Stopping Nuclio function: $func_name"
-            nuctl delete function "$func_name" --platform local 2>/dev/null || true
+            # Delete function - continue even if it fails
+            set +e  # Temporarily disable exit on error
+            nuctl delete function "$func_name" --platform local 2>&1
+            delete_result=$?
+            set -e  # Re-enable exit on error
+            if [[ $delete_result -eq 0 ]]; then
+                ((stopped_count++))
+            else
+                log_warning "Failed to stop function: $func_name (exit code: $delete_result)"
+            fi
         fi
     done
 
-    # Stop MediaPipe service
+    if [[ $stopped_count -gt 0 ]]; then
+        log_success "Stopped $stopped_count egocentric Nuclio function(s)"
+    else
+        log_info "No egocentric Nuclio functions found to stop"
+    fi
+
+    # Stop MediaPipe service container
     stop_mediapipe_service
 
-    log_success "Service stop operation completed"
+    log_success "All services stopped successfully"
     exit 0
 fi
 
-# Handle MediaPipe service deployment
-if [[ "$DEPLOY_MEDIAPIPE_SERVICE" = true ]]; then
-    log_info "Processing MediaPipe standalone service deployment..."
+# Handle MediaPipe deployment (automatically manages service and Nuclio function)
+if [[ "$DEPLOY_MEDIAPIPE" = true ]]; then
+    log_info "Processing MediaPipe deployment (pose + hands detection)..."
 
-    # Setup MediaPipe service
+    mediapipe_dir="$SCRIPT_DIR/mediapipe-service"
+    if [[ ! -d "$mediapipe_dir" ]]; then
+        log_error "MediaPipe service directory not found: $mediapipe_dir"
+        exit 1
+    fi
+
+    # Step 1: Setup MediaPipe service if needed
+    log_info "Setting up MediaPipe service..."
     if setup_mediapipe_service; then
         log_success "MediaPipe service setup completed"
     else
@@ -526,25 +549,69 @@ if [[ "$DEPLOY_MEDIAPIPE_SERVICE" = true ]]; then
         exit 1
     fi
 
-    # Start MediaPipe service
-    if start_mediapipe_service; then
-        log_success "MediaPipe service deployment completed"
-    else
+    # Step 2: Ensure MediaPipe service is running
+    log_info "Ensuring MediaPipe service is running..."
+    if ! start_mediapipe_service; then
         log_error "Failed to start MediaPipe service"
         exit 1
     fi
 
-    # Show service information
+    # Step 3: Verify service is accessible
+    log_info "Verifying MediaPipe service is accessible..."
+    max_attempts=10
+    attempt=0
+    while [[ $attempt -lt $max_attempts ]]; do
+        if curl -s -f http://localhost:8000/health > /dev/null 2>&1; then
+            log_success "MediaPipe service is accessible"
+            break
+        fi
+        if [[ $attempt -eq $((max_attempts - 1)) ]]; then
+            log_error "MediaPipe service is not responding after $max_attempts attempts"
+            exit 1
+        fi
+        log_info "Waiting for MediaPipe service to be ready... (attempt $((attempt + 1))/$max_attempts)"
+        sleep 2
+        ((attempt++))
+    done
+
+    # Step 4: Deploy Nuclio function
+    nuclio_path="$mediapipe_dir/nuclio"
+    if [[ ! -d "$nuclio_path" ]]; then
+        log_error "Nuclio function directory not found: $nuclio_path"
+        exit 1
+    fi
+
+    if [[ ! -f "$nuclio_path/function.yaml" ]]; then
+        log_error "Nuclio function.yaml not found: $nuclio_path/function.yaml"
+        exit 1
+    fi
+
+    log_info "Deploying MediaPipe Nuclio function..."
+    if deploy_cpu_model "$nuclio_path" "MediaPipe Pose + Hands"; then
+        log_success "MediaPipe Nuclio function deployed successfully"
+    else
+        log_error "Failed to deploy MediaPipe Nuclio function"
+        exit 1
+    fi
+
+    # Show deployment summary
     echo
-    log_info "MediaPipe Service Information:"
-    log_info "  📍 Service URL: http://localhost:8000"
-    log_info "  🔍 Health Check: http://localhost:8000/health"
-    log_info "  🎯 Detection API: http://localhost:8000/detect"
+    log_success "MediaPipe deployment completed!"
     echo
-    log_info "Management commands:"
-    log_info "  📊 Check status: cd mediapipe-service && ./status.sh"
-    log_info "  🛑 Stop service: cd mediapipe-service && ./stop.sh"
-    log_info "  🔄 Restart service: cd mediapipe-service && ./stop.sh && ./start.sh"
+    log_info "MediaPipe Information:"
+    log_info "  📍 Function Name: pth-google-mediapipe-pose-hands"
+    log_info "  🔗 Service: http://mediapipe-pose:8000 (Docker container on cvat_cvat network)"
+    log_info "  🎯 Type: Detector (Skeleton - 57 keypoints: body + hands)"
+    echo
+    log_info "Management:"
+    log_info "  Check function: nuctl get function pth-google-mediapipe-pose-hands --platform local"
+    log_info "  Check service: docker ps | grep mediapipe-pose"
+    log_info "  Stop all: $0 --stop"
+    echo
+    log_info "Next steps:"
+    log_info "  1. The function will appear in CVAT's auto-annotation dropdown"
+    log_info "  2. Test with egocentric video datasets"
+    echo
 
     exit 0
 fi
@@ -626,18 +693,6 @@ if [[ "$DEPLOY_MMPOSE" = true ]]; then
     fi
 fi
 
-# MediaPipe - Pose + Hands Detection (deprecated - use --mediapipe-service)
-if [[ "$DEPLOY_MEDIAPIPE" = true ]]; then
-    log_warning "MediaPipe Nuclio deployment is deprecated. Use --mediapipe-service instead."
-    log_info "Setting up MediaPipe standalone service..."
-    if setup_mediapipe_service && start_mediapipe_service; then
-        log_success "MediaPipe service setup completed (use --mediapipe-service for management)"
-        ((deployed_count++))
-    else
-        log_error "Failed to setup MediaPipe service"
-        ((failed_count++))
-    fi
-fi
 
 log_info "All model deployments processed"
 
@@ -662,7 +717,7 @@ if [[ $deployed_count -gt 0 ]]; then
     log_info "MediaPipe Service Status:"
     check_mediapipe_service_status
 
-    log_info "To start MediaPipe service: $0 --mediapipe-service"
+    log_info "To deploy MediaPipe: $0 --mediapipe"
     log_info "To stop all services: $0 --stop"
 else
     log_error "No models were successfully deployed. Check the logs above for details."

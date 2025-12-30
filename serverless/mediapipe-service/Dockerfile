@@ -33,12 +33,21 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
+# Pre-download MediaPipe models during build (avoids runtime DNS issues)
+RUN mkdir -p /tmp && \
+    curl -L -o /tmp/pose_landmarker_lite.task \
+    https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task && \
+    curl -L -o /tmp/hand_landmarker.task \
+    https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task && \
+    chmod 644 /tmp/*.task
+
 # Copy application code
 COPY app.py .
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash app && \
-    chown -R app:app /app
+    chown -R app:app /app && \
+    chown -R app:app /tmp/*.task
 USER app
 
 # Expose port

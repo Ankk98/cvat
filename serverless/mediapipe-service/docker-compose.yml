@@ -12,6 +12,7 @@ version: '3.8'
 
 services:
   mediapipe-pose:
+    container_name: mediapipe-pose
     build: .
     ports:
       - "8000:8000"
@@ -26,11 +27,11 @@ services:
       retries: 3
       start_period: 40s
     networks:
-      - mediapipe-network
+      - cvat_cvat
 
 networks:
-  mediapipe-network:
-    driver: bridge
+  cvat_cvat:
+    external: true
 
 # Example configuration for running alongside CVAT
 # Uncomment and modify the CVAT service if you want to run both together

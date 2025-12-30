@@ -3,65 +3,350 @@
     "name": "person",
     "type": "skeleton",
     "attributes": [],
-    "svg": "<line x1=\"50\" y1=\"10\" x2=\"40\" y2=\"15\" data-type=\"edge\" data-node-from=\"nose\" data-node-to=\"left_eye\"></line><line x1=\"50\" y1=\"10\" x2=\"60\" y2=\"15\" data-type=\"edge\" data-node-from=\"nose\" data-node-to=\"right_eye\"></line><line x1=\"40\" y1=\"15\" x2=\"35\" y2=\"20\" data-type=\"edge\" data-node-from=\"left_eye\" data-node-to=\"left_ear\"></line><line x1=\"60\" y1=\"15\" x2=\"65\" y2=\"20\" data-type=\"edge\" data-node-from=\"right_eye\" data-node-to=\"right_ear\"></line><line x1=\"30\" y1=\"40\" x2=\"70\" y2=\"40\" data-type=\"edge\" data-node-from=\"left_shoulder\" data-node-to=\"right_shoulder\"></line><line x1=\"30\" y1=\"40\" x2=\"35\" y2=\"70\" data-type=\"edge\" data-node-from=\"left_shoulder\" data-node-to=\"left_elbow\"></line><line x1=\"70\" y1=\"40\" x2=\"65\" y2=\"70\" data-type=\"edge\" data-node-from=\"right_shoulder\" data-node-to=\"right_elbow\"></line><line x1=\"35\" y1=\"70\" x2=\"15\" y2=\"80\" data-type=\"edge\" data-node-from=\"left_elbow\" data-node-to=\"left_wrist\"></line><line x1=\"65\" y1=\"70\" x2=\"85\" y2=\"80\" data-type=\"edge\" data-node-from=\"right_elbow\" data-node-to=\"right_wrist\"></line><line x1=\"30\" y1=\"40\" x2=\"40\" y2=\"90\" data-type=\"edge\" data-node-from=\"left_shoulder\" data-node-to=\"left_hip\"></line><line x1=\"70\" y1=\"40\" x2=\"60\" y2=\"90\" data-type=\"edge\" data-node-from=\"right_shoulder\" data-node-to=\"right_hip\"></line><line x1=\"40\" y1=\"90\" x2=\"60\" y2=\"90\" data-type=\"edge\" data-node-from=\"left_hip\" data-node-to=\"right_hip\"></line><line x1=\"40\" y1=\"90\" x2=\"45\" y2=\"110\" data-type=\"edge\" data-node-from=\"left_hip\" data-node-to=\"left_knee\"></line><line x1=\"60\" y1=\"90\" x2=\"55\" y2=\"110\" data-type=\"edge\" data-node-from=\"right_hip\" data-node-to=\"right_knee\"></line><line x1=\"45\" y1=\"110\" x2=\"50\" y2=\"130\" data-type=\"edge\" data-node-from=\"left_knee\" data-node-to=\"left_ankle\"></line><line x1=\"55\" y1=\"110\" x2=\"60\" y2=\"130\" data-type=\"edge\" data-node-from=\"right_knee\" data-node-to=\"right_ankle\"></line><line x1=\"15\" y1=\"80\" x2=\"10\" y2=\"75\" data-type=\"edge\" data-node-from=\"left_wrist\" data-node-to=\"left_thumb_cmc\"></line><line x1=\"10\" y1=\"75\" x2=\"8\" y2=\"70\" data-type=\"edge\" data-node-from=\"left_thumb_cmc\" data-node-to=\"left_thumb_mcp\"></line><line x1=\"8\" y1=\"70\" x2=\"6\" y2=\"65\" data-type=\"edge\" data-node-from=\"left_thumb_mcp\" data-node-to=\"left_thumb_ip\"></line><line x1=\"6\" y1=\"65\" x2=\"4\" y2=\"60\" data-type=\"edge\" data-node-from=\"left_thumb_ip\" data-node-to=\"left_thumb_tip\"></line><line x1=\"15\" y1=\"80\" x2=\"12\" y2=\"72\" data-type=\"edge\" data-node-from=\"left_wrist\" data-node-to=\"left_index_mcp\"></line><line x1=\"12\" y1=\"72\" x2=\"14\" y2=\"67\" data-type=\"edge\" data-node-from=\"left_index_mcp\" data-node-to=\"left_index_pip\"></line><line x1=\"14\" y1=\"67\" x2=\"16\" y2=\"62\" data-type=\"edge\" data-node-from=\"left_index_pip\" data-node-to=\"left_index_dip\"></line><line x1=\"16\" y1=\"62\" x2=\"18\" y2=\"57\" data-type=\"edge\" data-node-from=\"left_index_dip\" data-node-to=\"left_index_tip\"></line><line x1=\"15\" y1=\"80\" x2=\"20\" y2=\"52\" data-type=\"edge\" data-node-from=\"left_wrist\" data-node-to=\"left_middle_mcp\"></line><line x1=\"20\" y1=\"52\" x2=\"22\" y2=\"47\" data-type=\"edge\" data-node-from=\"left_middle_mcp\" data-node-to=\"left_middle_pip\"></line><line x1=\"22\" y1=\"47\" x2=\"24\" y2=\"42\" data-type=\"edge\" data-node-from=\"left_middle_pip\" data-node-to=\"left_middle_dip\"></line><line x1=\"24\" y1=\"42\" x2=\"26\" y2=\"37\" data-type=\"edge\" data-node-from=\"left_middle_dip\" data-node-to=\"left_middle_tip\"></line><line x1=\"15\" y1=\"80\" x2=\"28\" y2=\"32\" data-type=\"edge\" data-node-from=\"left_wrist\" data-node-to=\"left_ring_mcp\"></line><line x1=\"28\" y1=\"32\" x2=\"30\" y2=\"27\" data-type=\"edge\" data-node-from=\"left_ring_mcp\" data-node-to=\"left_ring_pip\"></line><line x1=\"30\" y1=\"27\" x2=\"32\" y2=\"22\" data-type=\"edge\" data-node-from=\"left_ring_pip\" data-node-to=\"left_ring_dip\"></line><line x1=\"32\" y1=\"22\" x2=\"34\" y2=\"17\" data-type=\"edge\" data-node-from=\"left_ring_dip\" data-node-to=\"left_ring_tip\"></line><line x1=\"15\" y1=\"80\" x2=\"36\" y2=\"12\" data-type=\"edge\" data-node-from=\"left_wrist\" data-node-to=\"left_pinky_mcp\"></line><line x1=\"36\" y1=\"12\" x2=\"38\" y2=\"7\" data-type=\"edge\" data-node-from=\"left_pinky_mcp\" data-node-to=\"left_pinky_pip\"></line><line x1=\"38\" y1=\"7\" x2=\"40\" y2=\"2\" data-type=\"edge\" data-node-from=\"left_pinky_pip\" data-node-to=\"left_pinky_dip\"></line><line x1=\"40\" y1=\"2\" x2=\"42\" y2=\"-3\" data-type=\"edge\" data-node-from=\"left_pinky_dip\" data-node-to=\"left_pinky_tip\"></line><line x1=\"85\" y1=\"80\" x2=\"90\" y2=\"75\" data-type=\"edge\" data-node-from=\"right_wrist\" data-node-to=\"right_thumb_cmc\"></line><line x1=\"90\" y1=\"75\" x2=\"92\" y2=\"70\" data-type=\"edge\" data-node-from=\"right_thumb_cmc\" data-node-to=\"right_thumb_mcp\"></line><line x1=\"92\" y1=\"70\" x2=\"94\" y2=\"65\" data-type=\"edge\" data-node-from=\"right_thumb_mcp\" data-node-to=\"right_thumb_ip\"></line><line x1=\"94\" y1=\"65\" x2=\"96\" y2=\"60\" data-type=\"edge\" data-node-from=\"right_thumb_ip\" data-node-to=\"right_thumb_tip\"></line><line x1=\"85\" y1=\"80\" x2=\"88\" y2=\"72\" data-type=\"edge\" data-node-from=\"right_wrist\" data-node-to=\"right_index_mcp\"></line><line x1=\"88\" y1=\"72\" x2=\"86\" y2=\"67\" data-type=\"edge\" data-node-from=\"right_index_mcp\" data-node-to=\"right_index_pip\"></line><line x1=\"86\" y1=\"67\" x2=\"84\" y2=\"62\" data-type=\"edge\" data-node-from=\"right_index_pip\" data-node-to=\"right_index_dip\"></line><line x1=\"84\" y1=\"62\" x2=\"82\" y2=\"57\" data-type=\"edge\" data-node-from=\"right_index_dip\" data-node-to=\"right_index_tip\"></line><line x1=\"85\" y1=\"80\" x2=\"80\" y2=\"52\" data-type=\"edge\" data-node-from=\"right_wrist\" data-node-to=\"right_middle_mcp\"></line><line x1=\"80\" y1=\"52\" x2=\"78\" y2=\"47\" data-type=\"edge\" data-node-from=\"right_middle_mcp\" data-node-to=\"right_middle_pip\"></line><line x1=\"78\" y1=\"47\" x2=\"76\" y2=\"42\" data-type=\"edge\" data-node-from=\"right_middle_pip\" data-node-to=\"right_middle_dip\"></line><line x1=\"76\" y1=\"42\" x2=\"74\" y2=\"37\" data-type=\"edge\" data-node-from=\"right_middle_dip\" data-node-to=\"right_middle_tip\"></line><line x1=\"85\" y1=\"80\" x2=\"72\" y2=\"32\" data-type=\"edge\" data-node-from=\"right_wrist\" data-node-to=\"right_ring_mcp\"></line><line x1=\"72\" y1=\"32\" x2=\"70\" y2=\"27\" data-type=\"edge\" data-node-from=\"right_ring_mcp\" data-node-to=\"right_ring_pip\"></line><line x1=\"70\" y1=\"27\" x2=\"68\" y2=\"22\" data-type=\"edge\" data-node-from=\"right_ring_pip\" data-node-to=\"right_ring_dip\"></line><line x1=\"68\" y1=\"22\" x2=\"66\" y2=\"17\" data-type=\"edge\" data-node-from=\"right_ring_dip\" data-node-to=\"right_ring_tip\"></line><line x1=\"85\" y1=\"80\" x2=\"64\" y2=\"12\" data-type=\"edge\" data-node-from=\"right_wrist\" data-node-to=\"right_pinky_mcp\"></line><line x1=\"64\" y1=\"12\" x2=\"62\" y2=\"7\" data-type=\"edge\" data-node-from=\"right_pinky_mcp\" data-node-to=\"right_pinky_pip\"></line><line x1=\"62\" y1=\"7\" x2=\"60\" y2=\"2\" data-type=\"edge\" data-node-from=\"right_pinky_pip\" data-node-to=\"right_pinky_dip\"></line><line x1=\"60\" y1=\"2\" x2=\"58\" y2=\"-3\" data-type=\"edge\" data-node-from=\"right_pinky_dip\" data-node-to=\"right_pinky_tip\"></line><circle r=\"1\" cx=\"50\" cy=\"10\" data-label-id=\"0\" data-node-id=\"nose\"></circle><circle r=\"1\" cx=\"40\" cy=\"15\" data-label-id=\"1\" data-node-id=\"left_eye\"></circle><circle r=\"1\" cx=\"60\" cy=\"15\" data-label-id=\"2\" data-node-id=\"right_eye\"></circle><circle r=\"1\" cx=\"35\" cy=\"20\" data-label-id=\"3\" data-node-id=\"left_ear\"></circle><circle r=\"1\" cx=\"65\" cy=\"20\" data-label-id=\"4\" data-node-id=\"right_ear\"></circle><circle r=\"1\" cx=\"30\" cy=\"40\" data-label-id=\"5\" data-node-id=\"left_shoulder\"></circle><circle r=\"1\" cx=\"70\" cy=\"40\" data-label-id=\"6\" data-node-id=\"right_shoulder\"></circle><circle r=\"1\" cx=\"35\" cy=\"70\" data-label-id=\"7\" data-node-id=\"left_elbow\"></circle><circle r=\"1\" cx=\"65\" cy=\"70\" data-label-id=\"8\" data-node-id=\"right_elbow\"></circle><circle r=\"1\" cx=\"40\" cy=\"90\" data-label-id=\"9\" data-node-id=\"left_hip\"></circle><circle r=\"1\" cx=\"60\" cy=\"90\" data-label-id=\"10\" data-node-id=\"right_hip\"></circle><circle r=\"1\" cx=\"45\" cy=\"110\" data-label-id=\"11\" data-node-id=\"left_knee\"></circle><circle r=\"1\" cx=\"55\" cy=\"110\" data-label-id=\"12\" data-node-id=\"right_knee\"></circle><circle r=\"1\" cx=\"50\" cy=\"130\" data-label-id=\"13\" data-node-id=\"left_ankle\"></circle><circle r=\"1\" cx=\"60\" cy=\"130\" data-label-id=\"14\" data-node-id=\"right_ankle\"></circle><circle r=\"1\" cx=\"15\" cy=\"80\" data-label-id=\"15\" data-node-id=\"left_wrist\"></circle><circle r=\"1\" cx=\"10\" cy=\"75\" data-label-id=\"16\" data-node-id=\"left_thumb_cmc\"></circle><circle r=\"1\" cx=\"8\" cy=\"70\" data-label-id=\"17\" data-node-id=\"left_thumb_mcp\"></circle><circle r=\"1\" cx=\"6\" cy=\"65\" data-label-id=\"18\" data-node-id=\"left_thumb_ip\"></circle><circle r=\"1\" cx=\"4\" cy=\"60\" data-label-id=\"19\" data-node-id=\"left_thumb_tip\"></circle><circle r=\"1\" cx=\"12\" cy=\"72\" data-label-id=\"20\" data-node-id=\"left_index_mcp\"></circle><circle r=\"1\" cx=\"14\" cy=\"67\" data-label-id=\"21\" data-node-id=\"left_index_pip\"></circle><circle r=\"1\" cx=\"16\" cy=\"62\" data-label-id=\"22\" data-node-id=\"left_index_dip\"></circle><circle r=\"1\" cx=\"18\" cy=\"57\" data-label-id=\"23\" data-node-id=\"left_index_tip\"></circle><circle r=\"1\" cx=\"20\" cy=\"52\" data-label-id=\"24\" data-node-id=\"left_middle_mcp\"></circle><circle r=\"1\" cx=\"22\" cy=\"47\" data-label-id=\"25\" data-node-id=\"left_middle_pip\"></circle><circle r=\"1\" cx=\"24\" cy=\"42\" data-label-id=\"26\" data-node-id=\"left_middle_dip\"></circle><circle r=\"1\" cx=\"26\" cy=\"37\" data-label-id=\"27\" data-node-id=\"left_middle_tip\"></circle><circle r=\"1\" cx=\"28\" cy=\"32\" data-label-id=\"28\" data-node-id=\"left_ring_mcp\"></circle><circle r=\"1\" cx=\"30\" cy=\"27\" data-label-id=\"29\" data-node-id=\"left_ring_pip\"></circle><circle r=\"1\" cx=\"32\" cy=\"22\" data-label-id=\"30\" data-node-id=\"left_ring_dip\"></circle><circle r=\"1\" cx=\"34\" cy=\"17\" data-label-id=\"31\" data-node-id=\"left_ring_tip\"></circle><circle r=\"1\" cx=\"36\" cy=\"12\" data-label-id=\"32\" data-node-id=\"left_pinky_mcp\"></circle><circle r=\"1\" cx=\"38\" cy=\"7\" data-label-id=\"33\" data-node-id=\"left_pinky_pip\"></circle><circle r=\"1\" cx=\"40\" cy=\"2\" data-label-id=\"34\" data-node-id=\"left_pinky_dip\"></circle><circle r=\"1\" cx=\"42\" cy=\"-3\" data-label-id=\"35\" data-node-id=\"left_pinky_tip\"></circle><circle r=\"1\" cx=\"85\" cy=\"80\" data-label-id=\"36\" data-node-id=\"right_wrist\"></circle><circle r=\"1\" cx=\"90\" cy=\"75\" data-label-id=\"37\" data-node-id=\"right_thumb_cmc\"></circle><circle r=\"1\" cx=\"92\" cy=\"70\" data-label-id=\"38\" data-node-id=\"right_thumb_mcp\"></circle><circle r=\"1\" cx=\"94\" cy=\"65\" data-label-id=\"39\" data-node-id=\"right_thumb_ip\"></circle><circle r=\"1\" cx=\"96\" cy=\"60\" data-label-id=\"40\" data-node-id=\"right_thumb_tip\"></circle><circle r=\"1\" cx=\"88\" cy=\"72\" data-label-id=\"41\" data-node-id=\"right_index_mcp\"></circle><circle r=\"1\" cx=\"86\" cy=\"67\" data-label-id=\"42\" data-node-id=\"right_index_pip\"></circle><circle r=\"1\" cx=\"84\" cy=\"62\" data-label-id=\"43\" data-node-id=\"right_index_dip\"></circle><circle r=\"1\" cx=\"82\" cy=\"57\" data-label-id=\"44\" data-node-id=\"right_index_tip\"></circle><circle r=\"1\" cx=\"80\" cy=\"52\" data-label-id=\"45\" data-node-id=\"right_middle_mcp\"></circle><circle r=\"1\" cx=\"78\" cy=\"47\" data-label-id=\"46\" data-node-id=\"right_middle_pip\"></circle><circle r=\"1\" cx=\"76\" cy=\"42\" data-label-id=\"47\" data-node-id=\"right_middle_dip\"></circle><circle r=\"1\" cx=\"74\" cy=\"37\" data-label-id=\"48\" data-node-id=\"right_middle_tip\"></circle><circle r=\"1\" cx=\"72\" cy=\"32\" data-label-id=\"49\" data-node-id=\"right_ring_mcp\"></circle><circle r=\"1\" cx=\"70\" cy=\"27\" data-label-id=\"50\" data-node-id=\"right_ring_pip\"></circle><circle r=\"1\" cx=\"68\" cy=\"22\" data-label-id=\"51\" data-node-id=\"right_ring_dip\"></circle><circle r=\"1\" cx=\"66\" cy=\"17\" data-label-id=\"52\" data-node-id=\"right_ring_tip\"></circle><circle r=\"1\" cx=\"64\" cy=\"12\" data-label-id=\"53\" data-node-id=\"right_pinky_mcp\"></circle><circle r=\"1\" cx=\"62\" cy=\"7\" data-label-id=\"54\" data-node-id=\"right_pinky_pip\"></circle><circle r=\"1\" cx=\"60\" cy=\"2\" data-label-id=\"55\" data-node-id=\"right_pinky_dip\"></circle><circle r=\"1\" cx=\"58\" cy=\"-3\" data-label-id=\"56\" data-node-id=\"right_pinky_tip\"></circle>",
+    "svg": "&lt;line x1=&quot;50&quot; y1=&quot;10&quot; x2=&quot;40&quot; y2=&quot;15&quot; data-type=&quot;edge&quot; data-node-from=&quot;0&quot; data-node-to=&quot;1&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;50&quot; y1=&quot;10&quot; x2=&quot;60&quot; y2=&quot;15&quot; data-type=&quot;edge&quot; data-node-from=&quot;0&quot; data-node-to=&quot;2&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;40&quot; y1=&quot;15&quot; x2=&quot;35&quot; y2=&quot;20&quot; data-type=&quot;edge&quot; data-node-from=&quot;1&quot; data-node-to=&quot;3&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;60&quot; y1=&quot;15&quot; x2=&quot;65&quot; y2=&quot;20&quot; data-type=&quot;edge&quot; data-node-from=&quot;2&quot; data-node-to=&quot;4&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;30&quot; y1=&quot;40&quot; x2=&quot;70&quot; y2=&quot;40&quot; data-type=&quot;edge&quot; data-node-from=&quot;5&quot; data-node-to=&quot;6&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;30&quot; y1=&quot;40&quot; x2=&quot;35&quot; y2=&quot;70&quot; data-type=&quot;edge&quot; data-node-from=&quot;5&quot; data-node-to=&quot;7&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;70&quot; y1=&quot;40&quot; x2=&quot;65&quot; y2=&quot;70&quot; data-type=&quot;edge&quot; data-node-from=&quot;6&quot; data-node-to=&quot;8&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;35&quot; y1=&quot;70&quot; x2=&quot;15&quot; y2=&quot;80&quot; data-type=&quot;edge&quot; data-node-from=&quot;7&quot; data-node-to=&quot;15&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;65&quot; y1=&quot;70&quot; x2=&quot;85&quot; y2=&quot;80&quot; data-type=&quot;edge&quot; data-node-from=&quot;8&quot; data-node-to=&quot;36&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;30&quot; y1=&quot;40&quot; x2=&quot;40&quot; y2=&quot;90&quot; data-type=&quot;edge&quot; data-node-from=&quot;5&quot; data-node-to=&quot;9&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;70&quot; y1=&quot;40&quot; x2=&quot;60&quot; y2=&quot;90&quot; data-type=&quot;edge&quot; data-node-from=&quot;6&quot; data-node-to=&quot;10&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;40&quot; y1=&quot;90&quot; x2=&quot;60&quot; y2=&quot;90&quot; data-type=&quot;edge&quot; data-node-from=&quot;9&quot; data-node-to=&quot;10&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;40&quot; y1=&quot;90&quot; x2=&quot;45&quot; y2=&quot;110&quot; data-type=&quot;edge&quot; data-node-from=&quot;9&quot; data-node-to=&quot;11&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;60&quot; y1=&quot;90&quot; x2=&quot;55&quot; y2=&quot;110&quot; data-type=&quot;edge&quot; data-node-from=&quot;10&quot; data-node-to=&quot;12&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;45&quot; y1=&quot;110&quot; x2=&quot;50&quot; y2=&quot;130&quot; data-type=&quot;edge&quot; data-node-from=&quot;11&quot; data-node-to=&quot;13&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;55&quot; y1=&quot;110&quot; x2=&quot;60&quot; y2=&quot;130&quot; data-type=&quot;edge&quot; data-node-from=&quot;12&quot; data-node-to=&quot;14&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;15&quot; y1=&quot;80&quot; x2=&quot;10&quot; y2=&quot;75&quot; data-type=&quot;edge&quot; data-node-from=&quot;15&quot; data-node-to=&quot;16&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;10&quot; y1=&quot;75&quot; x2=&quot;8&quot; y2=&quot;70&quot; data-type=&quot;edge&quot; data-node-from=&quot;16&quot; data-node-to=&quot;17&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;8&quot; y1=&quot;70&quot; x2=&quot;6&quot; y2=&quot;65&quot; data-type=&quot;edge&quot; data-node-from=&quot;17&quot; data-node-to=&quot;18&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;6&quot; y1=&quot;65&quot; x2=&quot;4&quot; y2=&quot;60&quot; data-type=&quot;edge&quot; data-node-from=&quot;18&quot; data-node-to=&quot;19&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;15&quot; y1=&quot;80&quot; x2=&quot;12&quot; y2=&quot;72&quot; data-type=&quot;edge&quot; data-node-from=&quot;15&quot; data-node-to=&quot;20&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;12&quot; y1=&quot;72&quot; x2=&quot;14&quot; y2=&quot;67&quot; data-type=&quot;edge&quot; data-node-from=&quot;20&quot; data-node-to=&quot;21&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;14&quot; y1=&quot;67&quot; x2=&quot;16&quot; y2=&quot;62&quot; data-type=&quot;edge&quot; data-node-from=&quot;21&quot; data-node-to=&quot;22&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;16&quot; y1=&quot;62&quot; x2=&quot;18&quot; y2=&quot;57&quot; data-type=&quot;edge&quot; data-node-from=&quot;22&quot; data-node-to=&quot;23&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;15&quot; y1=&quot;80&quot; x2=&quot;20&quot; y2=&quot;52&quot; data-type=&quot;edge&quot; data-node-from=&quot;15&quot; data-node-to=&quot;24&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;20&quot; y1=&quot;52&quot; x2=&quot;22&quot; y2=&quot;47&quot; data-type=&quot;edge&quot; data-node-from=&quot;24&quot; data-node-to=&quot;25&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;22&quot; y1=&quot;47&quot; x2=&quot;24&quot; y2=&quot;42&quot; data-type=&quot;edge&quot; data-node-from=&quot;25&quot; data-node-to=&quot;26&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;24&quot; y1=&quot;42&quot; x2=&quot;26&quot; y2=&quot;37&quot; data-type=&quot;edge&quot; data-node-from=&quot;26&quot; data-node-to=&quot;27&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;15&quot; y1=&quot;80&quot; x2=&quot;28&quot; y2=&quot;32&quot; data-type=&quot;edge&quot; data-node-from=&quot;15&quot; data-node-to=&quot;28&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;28&quot; y1=&quot;32&quot; x2=&quot;30&quot; y2=&quot;27&quot; data-type=&quot;edge&quot; data-node-from=&quot;28&quot; data-node-to=&quot;29&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;30&quot; y1=&quot;27&quot; x2=&quot;32&quot; y2=&quot;22&quot; data-type=&quot;edge&quot; data-node-from=&quot;29&quot; data-node-to=&quot;30&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;32&quot; y1=&quot;22&quot; x2=&quot;34&quot; y2=&quot;17&quot; data-type=&quot;edge&quot; data-node-from=&quot;30&quot; data-node-to=&quot;31&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;15&quot; y1=&quot;80&quot; x2=&quot;36&quot; y2=&quot;12&quot; data-type=&quot;edge&quot; data-node-from=&quot;15&quot; data-node-to=&quot;32&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;36&quot; y1=&quot;12&quot; x2=&quot;38&quot; y2=&quot;7&quot; data-type=&quot;edge&quot; data-node-from=&quot;32&quot; data-node-to=&quot;33&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;38&quot; y1=&quot;7&quot; x2=&quot;40&quot; y2=&quot;2&quot; data-type=&quot;edge&quot; data-node-from=&quot;33&quot; data-node-to=&quot;34&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;40&quot; y1=&quot;2&quot; x2=&quot;42&quot; y2=&quot;-3&quot; data-type=&quot;edge&quot; data-node-from=&quot;34&quot; data-node-to=&quot;35&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;85&quot; y1=&quot;80&quot; x2=&quot;90&quot; y2=&quot;75&quot; data-type=&quot;edge&quot; data-node-from=&quot;36&quot; data-node-to=&quot;37&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;90&quot; y1=&quot;75&quot; x2=&quot;92&quot; y2=&quot;70&quot; data-type=&quot;edge&quot; data-node-from=&quot;37&quot; data-node-to=&quot;38&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;92&quot; y1=&quot;70&quot; x2=&quot;94&quot; y2=&quot;65&quot; data-type=&quot;edge&quot; data-node-from=&quot;38&quot; data-node-to=&quot;39&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;94&quot; y1=&quot;65&quot; x2=&quot;96&quot; y2=&quot;60&quot; data-type=&quot;edge&quot; data-node-from=&quot;39&quot; data-node-to=&quot;40&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;85&quot; y1=&quot;80&quot; x2=&quot;88&quot; y2=&quot;72&quot; data-type=&quot;edge&quot; data-node-from=&quot;36&quot; data-node-to=&quot;41&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;88&quot; y1=&quot;72&quot; x2=&quot;86&quot; y2=&quot;67&quot; data-type=&quot;edge&quot; data-node-from=&quot;41&quot; data-node-to=&quot;42&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;86&quot; y1=&quot;67&quot; x2=&quot;84&quot; y2=&quot;62&quot; data-type=&quot;edge&quot; data-node-from=&quot;42&quot; data-node-to=&quot;43&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;84&quot; y1=&quot;62&quot; x2=&quot;82&quot; y2=&quot;57&quot; data-type=&quot;edge&quot; data-node-from=&quot;43&quot; data-node-to=&quot;44&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;85&quot; y1=&quot;80&quot; x2=&quot;80&quot; y2=&quot;52&quot; data-type=&quot;edge&quot; data-node-from=&quot;36&quot; data-node-to=&quot;45&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;80&quot; y1=&quot;52&quot; x2=&quot;78&quot; y2=&quot;47&quot; data-type=&quot;edge&quot; data-node-from=&quot;45&quot; data-node-to=&quot;46&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;78&quot; y1=&quot;47&quot; x2=&quot;76&quot; y2=&quot;42&quot; data-type=&quot;edge&quot; data-node-from=&quot;46&quot; data-node-to=&quot;47&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;76&quot; y1=&quot;42&quot; x2=&quot;74&quot; y2=&quot;37&quot; data-type=&quot;edge&quot; data-node-from=&quot;47&quot; data-node-to=&quot;48&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;85&quot; y1=&quot;80&quot; x2=&quot;72&quot; y2=&quot;32&quot; data-type=&quot;edge&quot; data-node-from=&quot;36&quot; data-node-to=&quot;49&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;72&quot; y1=&quot;32&quot; x2=&quot;70&quot; y2=&quot;27&quot; data-type=&quot;edge&quot; data-node-from=&quot;49&quot; data-node-to=&quot;50&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;70&quot; y1=&quot;27&quot; x2=&quot;68&quot; y2=&quot;22&quot; data-type=&quot;edge&quot; data-node-from=&quot;50&quot; data-node-to=&quot;51&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;68&quot; y1=&quot;22&quot; x2=&quot;66&quot; y2=&quot;17&quot; data-type=&quot;edge&quot; data-node-from=&quot;51&quot; data-node-to=&quot;52&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;85&quot; y1=&quot;80&quot; x2=&quot;64&quot; y2=&quot;12&quot; data-type=&quot;edge&quot; data-node-from=&quot;36&quot; data-node-to=&quot;53&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;64&quot; y1=&quot;12&quot; x2=&quot;62&quot; y2=&quot;7&quot; data-type=&quot;edge&quot; data-node-from=&quot;53&quot; data-node-to=&quot;54&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;62&quot; y1=&quot;7&quot; x2=&quot;60&quot; y2=&quot;2&quot; data-type=&quot;edge&quot; data-node-from=&quot;54&quot; data-node-to=&quot;55&quot;&gt;&lt;/line&gt;&lt;line x1=&quot;60&quot; y1=&quot;2&quot; x2=&quot;58&quot; y2=&quot;-3&quot; data-type=&quot;edge&quot; data-node-from=&quot;55&quot; data-node-to=&quot;56&quot;&gt;&lt;/line&gt;&lt;circle r=&quot;1&quot; cx=&quot;50&quot; cy=&quot;10&quot; data-label-id=&quot;0&quot; data-node-id=&quot;0&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;40&quot; cy=&quot;15&quot; data-label-id=&quot;1&quot; data-node-id=&quot;1&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;60&quot; cy=&quot;15&quot; data-label-id=&quot;2&quot; data-node-id=&quot;2&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;35&quot; cy=&quot;20&quot; data-label-id=&quot;3&quot; data-node-id=&quot;3&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;65&quot; cy=&quot;20&quot; data-label-id=&quot;4&quot; data-node-id=&quot;4&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;30&quot; cy=&quot;40&quot; data-label-id=&quot;5&quot; data-node-id=&quot;5&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;70&quot; cy=&quot;40&quot; data-label-id=&quot;6&quot; data-node-id=&quot;6&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;35&quot; cy=&quot;70&quot; data-label-id=&quot;7&quot; data-node-id=&quot;7&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;65&quot; cy=&quot;70&quot; data-label-id=&quot;8&quot; data-node-id=&quot;8&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;40&quot; cy=&quot;90&quot; data-label-id=&quot;9&quot; data-node-id=&quot;9&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;60&quot; cy=&quot;90&quot; data-label-id=&quot;10&quot; data-node-id=&quot;10&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;45&quot; cy=&quot;110&quot; data-label-id=&quot;11&quot; data-node-id=&quot;11&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;55&quot; cy=&quot;110&quot; data-label-id=&quot;12&quot; data-node-id=&quot;12&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;50&quot; cy=&quot;130&quot; data-label-id=&quot;13&quot; data-node-id=&quot;13&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;60&quot; cy=&quot;130&quot; data-label-id=&quot;14&quot; data-node-id=&quot;14&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;15&quot; cy=&quot;80&quot; data-label-id=&quot;15&quot; data-node-id=&quot;15&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;10&quot; cy=&quot;75&quot; data-label-id=&quot;16&quot; data-node-id=&quot;16&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;8&quot; cy=&quot;70&quot; data-label-id=&quot;17&quot; data-node-id=&quot;17&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;6&quot; cy=&quot;65&quot; data-label-id=&quot;18&quot; data-node-id=&quot;18&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;4&quot; cy=&quot;60&quot; data-label-id=&quot;19&quot; data-node-id=&quot;19&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;12&quot; cy=&quot;72&quot; data-label-id=&quot;20&quot; data-node-id=&quot;20&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;14&quot; cy=&quot;67&quot; data-label-id=&quot;21&quot; data-node-id=&quot;21&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;16&quot; cy=&quot;62&quot; data-label-id=&quot;22&quot; data-node-id=&quot;22&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;18&quot; cy=&quot;57&quot; data-label-id=&quot;23&quot; data-node-id=&quot;23&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;20&quot; cy=&quot;52&quot; data-label-id=&quot;24&quot; data-node-id=&quot;24&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;22&quot; cy=&quot;47&quot; data-label-id=&quot;25&quot; data-node-id=&quot;25&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;24&quot; cy=&quot;42&quot; data-label-id=&quot;26&quot; data-node-id=&quot;26&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;26&quot; cy=&quot;37&quot; data-label-id=&quot;27&quot; data-node-id=&quot;27&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;28&quot; cy=&quot;32&quot; data-label-id=&quot;28&quot; data-node-id=&quot;28&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;30&quot; cy=&quot;27&quot; data-label-id=&quot;29&quot; data-node-id=&quot;29&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;32&quot; cy=&quot;22&quot; data-label-id=&quot;30&quot; data-node-id=&quot;30&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;34&quot; cy=&quot;17&quot; data-label-id=&quot;31&quot; data-node-id=&quot;31&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;36&quot; cy=&quot;12&quot; data-label-id=&quot;32&quot; data-node-id=&quot;32&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;38&quot; cy=&quot;7&quot; data-label-id=&quot;33&quot; data-node-id=&quot;33&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;40&quot; cy=&quot;2&quot; data-label-id=&quot;34&quot; data-node-id=&quot;34&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;42&quot; cy=&quot;-3&quot; data-label-id=&quot;35&quot; data-node-id=&quot;35&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;85&quot; cy=&quot;80&quot; data-label-id=&quot;36&quot; data-node-id=&quot;36&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;90&quot; cy=&quot;75&quot; data-label-id=&quot;37&quot; data-node-id=&quot;37&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;92&quot; cy=&quot;70&quot; data-label-id=&quot;38&quot; data-node-id=&quot;38&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;94&quot; cy=&quot;65&quot; data-label-id=&quot;39&quot; data-node-id=&quot;39&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;96&quot; cy=&quot;60&quot; data-label-id=&quot;40&quot; data-node-id=&quot;40&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;88&quot; cy=&quot;72&quot; data-label-id=&quot;41&quot; data-node-id=&quot;41&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;86&quot; cy=&quot;67&quot; data-label-id=&quot;42&quot; data-node-id=&quot;42&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;84&quot; cy=&quot;62&quot; data-label-id=&quot;43&quot; data-node-id=&quot;43&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;82&quot; cy=&quot;57&quot; data-label-id=&quot;44&quot; data-node-id=&quot;44&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;80&quot; cy=&quot;52&quot; data-label-id=&quot;45&quot; data-node-id=&quot;45&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;78&quot; cy=&quot;47&quot; data-label-id=&quot;46&quot; data-node-id=&quot;46&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;76&quot; cy=&quot;42&quot; data-label-id=&quot;47&quot; data-node-id=&quot;47&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;74&quot; cy=&quot;37&quot; data-label-id=&quot;48&quot; data-node-id=&quot;48&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;72&quot; cy=&quot;32&quot; data-label-id=&quot;49&quot; data-node-id=&quot;49&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;70&quot; cy=&quot;27&quot; data-label-id=&quot;50&quot; data-node-id=&quot;50&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;68&quot; cy=&quot;22&quot; data-label-id=&quot;51&quot; data-node-id=&quot;51&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;66&quot; cy=&quot;17&quot; data-label-id=&quot;52&quot; data-node-id=&quot;52&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;64&quot; cy=&quot;12&quot; data-label-id=&quot;53&quot; data-node-id=&quot;53&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;62&quot; cy=&quot;7&quot; data-label-id=&quot;54&quot; data-node-id=&quot;54&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;60&quot; cy=&quot;2&quot; data-label-id=&quot;55&quot; data-node-id=&quot;55&quot;&gt;&lt;/circle&gt;&lt;circle r=&quot;1&quot; cx=&quot;58&quot; cy=&quot;-3&quot; data-label-id=&quot;56&quot; data-node-id=&quot;56&quot;&gt;&lt;/circle&gt;",
     "sublabels": [
-      {"id": 0, "name": "nose", "type": "points", "attributes": []},
-      {"id": 1, "name": "left_eye", "type": "points", "attributes": []},
-      {"id": 2, "name": "right_eye", "type": "points", "attributes": []},
-      {"id": 3, "name": "left_ear", "type": "points", "attributes": []},
-      {"id": 4, "name": "right_ear", "type": "points", "attributes": []},
-      {"id": 5, "name": "left_shoulder", "type": "points", "attributes": []},
-      {"id": 6, "name": "right_shoulder", "type": "points", "attributes": []},
-      {"id": 7, "name": "left_elbow", "type": "points", "attributes": []},
-      {"id": 8, "name": "right_elbow", "type": "points", "attributes": []},
-      {"id": 9, "name": "left_hip", "type": "points", "attributes": []},
-      {"id": 10, "name": "right_hip", "type": "points", "attributes": []},
-      {"id": 11, "name": "left_knee", "type": "points", "attributes": []},
-      {"id": 12, "name": "right_knee", "type": "points", "attributes": []},
-      {"id": 13, "name": "left_ankle", "type": "points", "attributes": []},
-      {"id": 14, "name": "right_ankle", "type": "points", "attributes": []},
-      {"id": 15, "name": "left_wrist", "type": "points", "attributes": []},
-      {"id": 16, "name": "left_thumb_cmc", "type": "points", "attributes": []},
-      {"id": 17, "name": "left_thumb_mcp", "type": "points", "attributes": []},
-      {"id": 18, "name": "left_thumb_ip", "type": "points", "attributes": []},
-      {"id": 19, "name": "left_thumb_tip", "type": "points", "attributes": []},
-      {"id": 20, "name": "left_index_mcp", "type": "points", "attributes": []},
-      {"id": 21, "name": "left_index_pip", "type": "points", "attributes": []},
-      {"id": 22, "name": "left_index_dip", "type": "points", "attributes": []},
-      {"id": 23, "name": "left_index_tip", "type": "points", "attributes": []},
-      {"id": 24, "name": "left_middle_mcp", "type": "points", "attributes": []},
-      {"id": 25, "name": "left_middle_pip", "type": "points", "attributes": []},
-      {"id": 26, "name": "left_middle_dip", "type": "points", "attributes": []},
-      {"id": 27, "name": "left_middle_tip", "type": "points", "attributes": []},
-      {"id": 28, "name": "left_ring_mcp", "type": "points", "attributes": []},
-      {"id": 29, "name": "left_ring_pip", "type": "points", "attributes": []},
-      {"id": 30, "name": "left_ring_dip", "type": "points", "attributes": []},
-      {"id": 31, "name": "left_ring_tip", "type": "points", "attributes": []},
-      {"id": 32, "name": "left_pinky_mcp", "type": "points", "attributes": []},
-      {"id": 33, "name": "left_pinky_pip", "type": "points", "attributes": []},
-      {"id": 34, "name": "left_pinky_dip", "type": "points", "attributes": []},
-      {"id": 35, "name": "left_pinky_tip", "type": "points", "attributes": []},
-      {"id": 36, "name": "right_wrist", "type": "points", "attributes": []},
-      {"id": 37, "name": "right_thumb_cmc", "type": "points", "attributes": []},
-      {"id": 38, "name": "right_thumb_mcp", "type": "points", "attributes": []},
-      {"id": 39, "name": "right_thumb_ip", "type": "points", "attributes": []},
-      {"id": 40, "name": "right_thumb_tip", "type": "points", "attributes": []},
-      {"id": 41, "name": "right_index_mcp", "type": "points", "attributes": []},
-      {"id": 42, "name": "right_index_pip", "type": "points", "attributes": []},
-      {"id": 43, "name": "right_index_dip", "type": "points", "attributes": []},
-      {"id": 44, "name": "right_index_tip", "type": "points", "attributes": []},
-      {"id": 45, "name": "right_middle_mcp", "type": "points", "attributes": []},
-      {"id": 46, "name": "right_middle_pip", "type": "points", "attributes": []},
-      {"id": 47, "name": "right_middle_dip", "type": "points", "attributes": []},
-      {"id": 48, "name": "right_middle_tip", "type": "points", "attributes": []},
-      {"id": 49, "name": "right_ring_mcp", "type": "points", "attributes": []},
-      {"id": 50, "name": "right_ring_pip", "type": "points", "attributes": []},
-      {"id": 51, "name": "right_ring_dip", "type": "points", "attributes": []},
-      {"id": 52, "name": "right_ring_tip", "type": "points", "attributes": []},
-      {"id": 53, "name": "right_pinky_mcp", "type": "points", "attributes": []},
-      {"id": 54, "name": "right_pinky_pip", "type": "points", "attributes": []},
-      {"id": 55, "name": "right_pinky_dip", "type": "points", "attributes": []},
-      {"id": 56, "name": "right_pinky_tip", "type": "points", "attributes": []}
+      {
+        "id": 0,
+        "name": "nose",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 1,
+        "name": "left_eye",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 2,
+        "name": "right_eye",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 3,
+        "name": "left_ear",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 4,
+        "name": "right_ear",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 5,
+        "name": "left_shoulder",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 6,
+        "name": "right_shoulder",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 7,
+        "name": "left_elbow",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 8,
+        "name": "right_elbow",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 9,
+        "name": "left_hip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 10,
+        "name": "right_hip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 11,
+        "name": "left_knee",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 12,
+        "name": "right_knee",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 13,
+        "name": "left_ankle",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 14,
+        "name": "right_ankle",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 15,
+        "name": "left_wrist",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 16,
+        "name": "left_thumb_cmc",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 17,
+        "name": "left_thumb_mcp",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 18,
+        "name": "left_thumb_ip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 19,
+        "name": "left_thumb_tip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 20,
+        "name": "left_index_mcp",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 21,
+        "name": "left_index_pip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 22,
+        "name": "left_index_dip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 23,
+        "name": "left_index_tip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 24,
+        "name": "left_middle_mcp",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 25,
+        "name": "left_middle_pip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 26,
+        "name": "left_middle_dip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 27,
+        "name": "left_middle_tip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 28,
+        "name": "left_ring_mcp",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 29,
+        "name": "left_ring_pip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 30,
+        "name": "left_ring_dip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 31,
+        "name": "left_ring_tip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 32,
+        "name": "left_pinky_mcp",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 33,
+        "name": "left_pinky_pip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 34,
+        "name": "left_pinky_dip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 35,
+        "name": "left_pinky_tip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 36,
+        "name": "right_wrist",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 37,
+        "name": "right_thumb_cmc",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 38,
+        "name": "right_thumb_mcp",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 39,
+        "name": "right_thumb_ip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 40,
+        "name": "right_thumb_tip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 41,
+        "name": "right_index_mcp",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 42,
+        "name": "right_index_pip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 43,
+        "name": "right_index_dip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 44,
+        "name": "right_index_tip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 45,
+        "name": "right_middle_mcp",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 46,
+        "name": "right_middle_pip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 47,
+        "name": "right_middle_dip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 48,
+        "name": "right_middle_tip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 49,
+        "name": "right_ring_mcp",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 50,
+        "name": "right_ring_pip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 51,
+        "name": "right_ring_dip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 52,
+        "name": "right_ring_tip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 53,
+        "name": "right_pinky_mcp",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 54,
+        "name": "right_pinky_pip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 55,
+        "name": "right_pinky_dip",
+        "type": "points",
+        "attributes": []
+      },
+      {
+        "id": 56,
+        "name": "right_pinky_tip",
+        "type": "points",
+        "attributes": []
+      }
     ]
   }
 ]

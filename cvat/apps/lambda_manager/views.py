@@ -151,99 +151,6 @@ class LambdaGateway:
             slogger.glob.warning(f"Failed to retrieve Nuclio functions: {e}. Built-in functions will still be available.")
 
     def get(self, func_id):
-        # Handle MediaPipe built-in function
-        if func_id == "pth-google-mediapipe-pose":
-            # Complete MediaPipe skeleton spec with all keypoint sublabels
-            # This matches the keypoints returned by MediaPipe service
-            mediapipe_spec = (
-                '[{"name": "person", "type": "skeleton", '
-                '"attributes": [{"name": "pose_confidence", "input_type": "number", "values": [0, 1]}, '
-                '{"name": "hand_confidence", "input_type": "number", "values": [0, 1]}], '
-                '"sublabels": ['
-                '{"name": "nose", "type": "points", "attributes": []}, '
-                '{"name": "left_eye", "type": "points", "attributes": []}, '
-                '{"name": "right_eye", "type": "points", "attributes": []}, '
-                '{"name": "left_ear", "type": "points", "attributes": []}, '
-                '{"name": "right_ear", "type": "points", "attributes": []}, '
-                '{"name": "left_shoulder", "type": "points", "attributes": []}, '
-                '{"name": "right_shoulder", "type": "points", "attributes": []}, '
-                '{"name": "left_elbow", "type": "points", "attributes": []}, '
-                '{"name": "right_elbow", "type": "points", "attributes": []}, '
-                '{"name": "left_wrist", "type": "points", "attributes": []}, '
-                '{"name": "right_wrist", "type": "points", "attributes": []}, '
-                '{"name": "left_hip", "type": "points", "attributes": []}, '
-                '{"name": "right_hip", "type": "points", "attributes": []}, '
-                '{"name": "left_knee", "type": "points", "attributes": []}, '
-                '{"name": "right_knee", "type": "points", "attributes": []}, '
-                '{"name": "left_ankle", "type": "points", "attributes": []}, '
-                '{"name": "right_ankle", "type": "points", "attributes": []}, '
-                '{"name": "left_thumb_cmc", "type": "points", "attributes": []}, '
-                '{"name": "left_thumb_mcp", "type": "points", "attributes": []}, '
-                '{"name": "left_thumb_ip", "type": "points", "attributes": []}, '
-                '{"name": "left_thumb_tip", "type": "points", "attributes": []}, '
-                '{"name": "left_index_mcp", "type": "points", "attributes": []}, '
-                '{"name": "left_index_pip", "type": "points", "attributes": []}, '
-                '{"name": "left_index_dip", "type": "points", "attributes": []}, '
-                '{"name": "left_index_tip", "type": "points", "attributes": []}, '
-                '{"name": "left_middle_mcp", "type": "points", "attributes": []}, '
-                '{"name": "left_middle_pip", "type": "points", "attributes": []}, '
-                '{"name": "left_middle_dip", "type": "points", "attributes": []}, '
-                '{"name": "left_middle_tip", "type": "points", "attributes": []}, '
-                '{"name": "left_ring_mcp", "type": "points", "attributes": []}, '
-                '{"name": "left_ring_pip", "type": "points", "attributes": []}, '
-                '{"name": "left_ring_dip", "type": "points", "attributes": []}, '
-                '{"name": "left_ring_tip", "type": "points", "attributes": []}, '
-                '{"name": "left_pinky_mcp", "type": "points", "attributes": []}, '
-                '{"name": "left_pinky_pip", "type": "points", "attributes": []}, '
-                '{"name": "left_pinky_dip", "type": "points", "attributes": []}, '
-                '{"name": "left_pinky_tip", "type": "points", "attributes": []}, '
-                '{"name": "right_thumb_cmc", "type": "points", "attributes": []}, '
-                '{"name": "right_thumb_mcp", "type": "points", "attributes": []}, '
-                '{"name": "right_thumb_ip", "type": "points", "attributes": []}, '
-                '{"name": "right_thumb_tip", "type": "points", "attributes": []}, '
-                '{"name": "right_index_mcp", "type": "points", "attributes": []}, '
-                '{"name": "right_index_pip", "type": "points", "attributes": []}, '
-                '{"name": "right_index_dip", "type": "points", "attributes": []}, '
-                '{"name": "right_index_tip", "type": "points", "attributes": []}, '
-                '{"name": "right_middle_mcp", "type": "points", "attributes": []}, '
-                '{"name": "right_middle_pip", "type": "points", "attributes": []}, '
-                '{"name": "right_middle_dip", "type": "points", "attributes": []}, '
-                '{"name": "right_middle_tip", "type": "points", "attributes": []}, '
-                '{"name": "right_ring_mcp", "type": "points", "attributes": []}, '
-                '{"name": "right_ring_pip", "type": "points", "attributes": []}, '
-                '{"name": "right_ring_dip", "type": "points", "attributes": []}, '
-                '{"name": "right_ring_tip", "type": "points", "attributes": []}, '
-                '{"name": "right_pinky_mcp", "type": "points", "attributes": []}, '
-                '{"name": "right_pinky_pip", "type": "points", "attributes": []}, '
-                '{"name": "right_pinky_dip", "type": "points", "attributes": []}, '
-                '{"name": "right_pinky_tip", "type": "points", "attributes": []}'
-                ']}]'
-            )
-            mediapipe_data = {
-                "metadata": {
-                    "name": "pth-google-mediapipe-pose",
-                    "namespace": "cvat",
-                    "labels": {"nuclio.io/project-name": "cvat"},
-                    "annotations": {
-                        "name": "MediaPipe Pose + Hands",
-                        "type": "detector",
-                        "framework": "mediapipe",
-                        "description": "Real-time pose estimation with hand and finger tracking for egocentric vision",
-                        "spec": mediapipe_spec
-                    }
-                },
-                "spec": {
-                    "description": "MediaPipe Pose Detection service for egocentric videos",
-                    "runtime": "python:3.10",
-                    "handler": "proxy:handler",
-                    "eventTimeout": "30s"
-                },
-                "status": {
-                    "state": "ready"
-                }
-            }
-            return LambdaFunction(self, mediapipe_data)
-
         # Handle SAM Auto built-in function
         if func_id == "pth-facebookresearch-sam-auto":
             sam_auto_data = {
@@ -280,9 +187,6 @@ class LambdaGateway:
         if func.id == "pth-facebookresearch-sam-auto":
             return self._invoke_sam_auto(payload)
 
-        if func.id == "pth-google-mediapipe-pose":
-            return self._invoke_mediapipe(payload)
-
         # Use direct invocation for Nuclio functions
         invoke_mode = settings.NUCLIO.get("INVOKE_METHOD", "direct")
         invoke_method = {
@@ -307,26 +211,6 @@ class LambdaGateway:
         except Exception as e:
             slogger.glob.error(f"SAM Auto service call failed: {e}")
             raise
-
-    def _invoke_mediapipe(self, payload):
-        """Invoke MediaPipe pose detection service."""
-        # MediaPipe service runs on port 8000
-        # Use host.docker.internal when running in Docker container
-        NUCLIO_TIMEOUT = settings.NUCLIO["DEFAULT_TIMEOUT"]
-        if os.path.exists("/.dockerenv"):  # inside a docker container
-            url = "http://host.docker.internal:8000/detect"
-        else:
-            url = "http://localhost:8000/detect"
-
-        with make_requests_session() as session:
-            try:
-                reply = session.post(url, timeout=NUCLIO_TIMEOUT, json=payload)
-                reply.raise_for_status()
-                response = reply.json()
-                return response
-            except Exception as e:
-                slogger.glob.error(f"MediaPipe service call failed: {e}")
-                raise
 
     def _invoke_via_dashboard(self, func, payload):
         return self._http(
