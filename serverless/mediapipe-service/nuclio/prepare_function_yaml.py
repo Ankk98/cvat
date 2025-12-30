@@ -24,24 +24,28 @@ def prepare_function_yaml(spec_file: str, function_yaml: str):
         spec_data = json.load(f)
 
     # If the JSON contains multiple labels (like raw-editor format),
-    # extract both "person-skeleton" and "hands-skeleton" labels for the function spec
+    # extract "hands-shoulders-skeleton", "person-skeleton", and "hands-skeleton" labels for the function spec
     if isinstance(spec_data, list) and len(spec_data) > 1:
+        hands_shoulders_label = [label for label in spec_data if label.get('name') == 'hands-shoulders-skeleton']
         person_label = [label for label in spec_data if label.get('name') == 'person-skeleton']
         hands_label = [label for label in spec_data if label.get('name') == 'hands-skeleton']
 
-        # Include both labels in the spec so users can choose which to use
-        both_labels = []
+        # Include all labels in the spec so users can choose which to use
+        all_labels = []
+        if hands_shoulders_label:
+            all_labels.extend(hands_shoulders_label)
+            print(f"  - Extracted 'hands-shoulders-skeleton' label from multi-label config")
         if person_label:
-            both_labels.extend(person_label)
+            all_labels.extend(person_label)
             print(f"  - Extracted 'person-skeleton' label from multi-label config")
         if hands_label:
-            both_labels.extend(hands_label)
+            all_labels.extend(hands_label)
             print(f"  - Extracted 'hands-skeleton' label from multi-label config")
 
-        if both_labels:
-            spec_data = both_labels
+        if all_labels:
+            spec_data = all_labels
         elif person_label:
-            # Fallback to just person-skeleton if hands-skeleton not found
+            # Fallback to just person-skeleton if others not found
             spec_data = person_label
 
     # Convert to JSON string (this is what CVAT expects)
@@ -89,7 +93,7 @@ def prepare_function_yaml(spec_file: str, function_yaml: str):
 if __name__ == "__main__":
     # Default paths relative to script location
     script_dir = Path(__file__).parent
-    # Use raw-editor.json as source (contains both person and hands, we extract person)
+    # Use raw-editor.json as source (contains hands-shoulders, person, and hands skeletons)
     default_spec = script_dir.parent / "mediapipe-skeletons-raw-editor.json"
     default_yaml = script_dir / "function.yaml"
 

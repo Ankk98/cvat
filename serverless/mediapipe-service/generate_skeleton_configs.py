@@ -211,6 +211,250 @@ def generate_hands_skeleton() -> Dict[str, Any]:
     }
 
 
+def generate_hands_shoulders_skeleton() -> Dict[str, Any]:
+    """Generate hands-up-to-shoulders skeleton configuration (46 keypoints: shoulders, elbows, wrists, and hands)."""
+
+    # Upper body keypoints (6: shoulders, elbows, wrists)
+    upper_body_keypoints = [
+        "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+        "left_wrist", "right_wrist"
+    ]
+
+    # Hand keypoints (20 per hand, excluding wrist which is already in upper body)
+    hand_keypoints = [
+        "thumb_cmc", "thumb_mcp", "thumb_ip", "thumb_tip",
+        "index_mcp", "index_pip", "index_dip", "index_tip",
+        "middle_mcp", "middle_pip", "middle_dip", "middle_tip",
+        "ring_mcp", "ring_pip", "ring_dip", "ring_tip",
+        "pinky_mcp", "pinky_pip", "pinky_dip", "pinky_tip"
+    ]
+
+    # Create sublabels: upper body first, then hands
+    sublabels = []
+
+    # Upper body keypoints (0-5)
+    for idx, kp_name in enumerate(upper_body_keypoints):
+        sublabels.append({
+            "id": idx,
+            "name": kp_name,
+            "type": "points",
+            "attributes": []
+        })
+
+    # Left hand keypoints (6-25, 20 keypoints excluding wrist)
+    for idx, kp_name in enumerate(hand_keypoints):
+        sublabels.append({
+            "id": idx + 6,
+            "name": f"left_{kp_name}",
+            "type": "points",
+            "attributes": []
+        })
+
+    # Right hand keypoints (26-45, 20 keypoints excluding wrist)
+    for idx, kp_name in enumerate(hand_keypoints):
+        sublabels.append({
+            "id": idx + 26,
+            "name": f"right_{kp_name}",
+            "type": "points",
+            "attributes": []
+        })
+
+    # Helper functions
+    # data-node-id must be numeric (sublabel ID) to match data-node-from/to in edges
+    def create_circle(cx: float, cy: float, element_id: int, node_name: str, node_id: int) -> str:
+        return (
+            f'<circle r="1" cx="{cx}" cy="{cy}" '
+            f'data-type="element node" '
+            f'data-element-id="{element_id}" '
+            f'data-label-name="{node_name}" '
+            f'data-node-id="{node_id}"></circle>'
+        )
+
+    # CVAT requires numeric IDs in data-node-from and data-node-to (not names)
+    def create_edge(x1: float, y1: float, x2: float, y2: float,
+                    node_from: Union[str, int], node_to: Union[str, int]) -> str:
+        return (
+            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" '
+            f'data-type="edge" '
+            f'data-node-from="{node_from}" '
+            f'data-node-to="{node_to}"></line>'
+        )
+
+    # Upper body keypoint positions
+    upper_body_positions = {
+        "left_shoulder": (30, 40),
+        "right_shoulder": (70, 40),
+        "left_elbow": (35, 70),
+        "right_elbow": (65, 70),
+        "left_wrist": (15, 80),
+        "right_wrist": (85, 80),
+    }
+
+    # Left hand positions (connected to left_wrist at 15, 80)
+    # Note: wrist is NOT included here - it's already in upper_body_positions
+    left_hand_positions = {
+        "left_thumb_cmc": (10, 75),
+        "left_thumb_mcp": (8, 70),
+        "left_thumb_ip": (6, 65),
+        "left_thumb_tip": (4, 60),
+        "left_index_mcp": (12, 72),
+        "left_index_pip": (14, 67),
+        "left_index_dip": (16, 62),
+        "left_index_tip": (18, 57),
+        "left_middle_mcp": (20, 52),
+        "left_middle_pip": (22, 47),
+        "left_middle_dip": (24, 42),
+        "left_middle_tip": (26, 37),
+        "left_ring_mcp": (28, 32),
+        "left_ring_pip": (30, 27),
+        "left_ring_dip": (32, 22),
+        "left_ring_tip": (34, 17),
+        "left_pinky_mcp": (36, 12),
+        "left_pinky_pip": (38, 7),
+        "left_pinky_dip": (40, 2),
+        "left_pinky_tip": (42, -3),
+    }
+
+    # Right hand positions (connected to right_wrist at 85, 80)
+    # Note: wrist is NOT included here - it's already in upper_body_positions
+    right_hand_positions = {
+        "right_thumb_cmc": (90, 75),
+        "right_thumb_mcp": (92, 70),
+        "right_thumb_ip": (94, 65),
+        "right_thumb_tip": (96, 60),
+        "right_index_mcp": (88, 72),
+        "right_index_pip": (86, 67),
+        "right_index_dip": (84, 62),
+        "right_index_tip": (82, 57),
+        "right_middle_mcp": (80, 52),
+        "right_middle_pip": (78, 47),
+        "right_middle_dip": (76, 42),
+        "right_middle_tip": (74, 37),
+        "right_ring_mcp": (72, 32),
+        "right_ring_pip": (70, 27),
+        "right_ring_dip": (68, 22),
+        "right_ring_tip": (66, 17),
+        "right_pinky_mcp": (64, 12),
+        "right_pinky_pip": (62, 7),
+        "right_pinky_dip": (60, 2),
+        "right_pinky_tip": (58, -3),
+    }
+
+    # Upper body edges
+    upper_body_edges = [
+        ("left_shoulder", "right_shoulder"),
+        ("left_shoulder", "left_elbow"),
+        ("right_shoulder", "right_elbow"),
+        ("left_elbow", "left_wrist"),
+        ("right_elbow", "right_wrist"),
+    ]
+
+    # Left hand edges
+    left_hand_edges = [
+        ("left_wrist", "left_thumb_cmc"),
+        ("left_thumb_cmc", "left_thumb_mcp"),
+        ("left_thumb_mcp", "left_thumb_ip"),
+        ("left_thumb_ip", "left_thumb_tip"),
+        ("left_wrist", "left_index_mcp"),
+        ("left_index_mcp", "left_index_pip"),
+        ("left_index_pip", "left_index_dip"),
+        ("left_index_dip", "left_index_tip"),
+        ("left_wrist", "left_middle_mcp"),
+        ("left_middle_mcp", "left_middle_pip"),
+        ("left_middle_pip", "left_middle_dip"),
+        ("left_middle_dip", "left_middle_tip"),
+        ("left_wrist", "left_ring_mcp"),
+        ("left_ring_mcp", "left_ring_pip"),
+        ("left_ring_pip", "left_ring_dip"),
+        ("left_ring_dip", "left_ring_tip"),
+        ("left_wrist", "left_pinky_mcp"),
+        ("left_pinky_mcp", "left_pinky_pip"),
+        ("left_pinky_pip", "left_pinky_dip"),
+        ("left_pinky_dip", "left_pinky_tip"),
+    ]
+
+    # Right hand edges
+    right_hand_edges = [
+        ("right_wrist", "right_thumb_cmc"),
+        ("right_thumb_cmc", "right_thumb_mcp"),
+        ("right_thumb_mcp", "right_thumb_ip"),
+        ("right_thumb_ip", "right_thumb_tip"),
+        ("right_wrist", "right_index_mcp"),
+        ("right_index_mcp", "right_index_pip"),
+        ("right_index_pip", "right_index_dip"),
+        ("right_index_dip", "right_index_tip"),
+        ("right_wrist", "right_middle_mcp"),
+        ("right_middle_mcp", "right_middle_pip"),
+        ("right_middle_pip", "right_middle_dip"),
+        ("right_middle_dip", "right_middle_tip"),
+        ("right_wrist", "right_ring_mcp"),
+        ("right_ring_mcp", "right_ring_pip"),
+        ("right_ring_pip", "right_ring_dip"),
+        ("right_ring_dip", "right_ring_tip"),
+        ("right_wrist", "right_pinky_mcp"),
+        ("right_pinky_mcp", "right_pinky_pip"),
+        ("right_pinky_pip", "right_pinky_dip"),
+        ("right_pinky_dip", "right_pinky_tip"),
+    ]
+
+    # Create mapping from sublabel name to ID for edges
+    # CVAT requires numeric IDs in data-node-from and data-node-to
+    name_to_id = {sublabel["name"]: sublabel["id"] for sublabel in sublabels}
+
+    svg_parts = []
+
+    # Add upper body edges (using numeric IDs)
+    for from_node, to_node in upper_body_edges:
+        x1, y1 = upper_body_positions[from_node]
+        x2, y2 = upper_body_positions[to_node]
+        from_id = name_to_id[from_node]
+        to_id = name_to_id[to_node]
+        svg_parts.append(create_edge(x1, y1, x2, y2, from_id, to_id))
+
+    # Add left hand edges (using numeric IDs)
+    for from_node, to_node in left_hand_edges:
+        # Wrist is in upper_body_positions, not hand_positions
+        x1, y1 = upper_body_positions.get(from_node, left_hand_positions.get(from_node))
+        x2, y2 = upper_body_positions.get(to_node, left_hand_positions.get(to_node))
+        from_id = name_to_id[from_node]
+        to_id = name_to_id[to_node]
+        svg_parts.append(create_edge(x1, y1, x2, y2, from_id, to_id))
+
+    # Add right hand edges (using numeric IDs)
+    for from_node, to_node in right_hand_edges:
+        # Wrist is in upper_body_positions, not hand_positions
+        x1, y1 = upper_body_positions.get(from_node, right_hand_positions.get(from_node))
+        x2, y2 = upper_body_positions.get(to_node, right_hand_positions.get(to_node))
+        from_id = name_to_id[from_node]
+        to_id = name_to_id[to_node]
+        svg_parts.append(create_edge(x1, y1, x2, y2, from_id, to_id))
+
+    # Add circles for upper body keypoints (using numeric IDs from name_to_id mapping)
+    for element_id, (node_name, (cx, cy)) in enumerate(upper_body_positions.items()):
+        node_id = name_to_id[node_name]
+        svg_parts.append(create_circle(cx, cy, element_id, node_name, node_id))
+
+    # Add circles for left hand (using numeric IDs from name_to_id mapping)
+    for element_id, (node_name, (cx, cy)) in enumerate(left_hand_positions.items(), start=6):
+        node_id = name_to_id[node_name]
+        svg_parts.append(create_circle(cx, cy, element_id, node_name, node_id))
+
+    # Add circles for right hand (using numeric IDs from name_to_id mapping)
+    for element_id, (node_name, (cx, cy)) in enumerate(right_hand_positions.items(), start=27):
+        node_id = name_to_id[node_name]
+        svg_parts.append(create_circle(cx, cy, element_id, node_name, node_id))
+
+    svg = ''.join(svg_parts)
+
+    return {
+        "name": "hands-shoulders-skeleton",
+        "type": "skeleton",
+        "attributes": [],
+        "svg": svg,
+        "sublabels": sublabels
+    }
+
+
 def generate_person_skeleton() -> Dict[str, Any]:
     """Generate person skeleton configuration (17 body + 42 hand keypoints = 57 total)."""
 
@@ -509,9 +753,10 @@ def main():
 
     # Generate skeletons
     hands_skeleton = generate_hands_skeleton()
+    hands_shoulders_skeleton = generate_hands_shoulders_skeleton()
     person_skeleton = generate_person_skeleton()
 
-    skeletons = [hands_skeleton, person_skeleton]
+    skeletons = [hands_skeleton, hands_shoulders_skeleton, person_skeleton]
 
     # Generate JSON for raw editor (pretty-printed, unescaped SVG)
     raw_editor_json = generate_json_for_raw_editor(skeletons)
@@ -524,6 +769,12 @@ def main():
     with open(hands_file, 'w', encoding='utf-8') as f:
         json.dump([hands_skeleton], f, indent=2, ensure_ascii=False)
     print(f"✓ Generated {hands_file}")
+
+    # Save hands-shoulders skeleton
+    hands_shoulders_file = output_dir / "mediapipe-hands-shoulders-skeleton.json"
+    with open(hands_shoulders_file, 'w', encoding='utf-8') as f:
+        json.dump([hands_shoulders_skeleton], f, indent=2, ensure_ascii=False)
+    print(f"✓ Generated {hands_shoulders_file}")
 
     # Save person skeleton
     person_file = output_dir / "mediapipe-person-skeleton.json"

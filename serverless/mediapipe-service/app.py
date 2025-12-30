@@ -254,6 +254,13 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
         "elements": []
     }
 
+    # Create hands-shoulders-skeleton (shoulders, elbows, wrists + hands)
+    hands_shoulders_skeleton = {
+        "label": "hands-shoulders-skeleton",
+        "type": "skeleton",
+        "elements": []
+    }
+
     # Process Pose results (body + basic hand keypoints)
     if pose_results and pose_results.pose_landmarks:
         pose_landmarks = pose_results.pose_landmarks[0]
@@ -268,6 +275,12 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
             # Lower body
             11: "left_hip", 12: "right_hip", 13: "left_knee", 14: "right_knee",
             15: "left_ankle", 16: "right_ankle"
+        }
+
+        # Upper body keypoints for hands-shoulders-skeleton (shoulders, elbows, wrists only)
+        upper_body_keypoints = {
+            5: "left_shoulder", 6: "right_shoulder", 7: "left_elbow", 8: "right_elbow",
+            9: "left_wrist", 10: "right_wrist"
         }
 
         # Add pose keypoints (always include all keypoints, even low confidence ones)
@@ -311,6 +324,10 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
                 ]
             }
             person_skeleton["elements"].append(element)
+
+            # Also add upper body keypoints (shoulders, elbows, wrists) to hands-shoulders-skeleton
+            if keypoint_name in upper_body_keypoints.values():
+                hands_shoulders_skeleton["elements"].append(element)
 
     # Process Hands results (detailed finger keypoints)
     # Use prioritized hands if provided, otherwise use all detected hands
@@ -394,9 +411,14 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
                         {"name": "confidence", "value": str(confidence)}
                     ]
                 }
-                # Add to both person-skeleton (body + hands) and hands-skeleton (hands only)
+                # Add to person-skeleton (body + hands) and hands-skeleton (hands only)
                 person_skeleton["elements"].append(element)
                 hands_skeleton["elements"].append(element)
+
+                # Add to hands-shoulders-skeleton (shoulders + hands), but skip wrist since it's already in upper body
+                # In hands-shoulders-skeleton, wrist comes from pose (upper body), not from hands
+                if keypoint_name not in ["left_wrist", "right_wrist"]:
+                    hands_shoulders_skeleton["elements"].append(element)
 
     # For egocentric videos, we want to include all keypoints but mark low-confidence ones as outside
     # Count visible keypoints (those with confidence above threshold)
@@ -444,6 +466,18 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
     if len(pose_keypoints) > 0:
         logger.info(f"Processed person-skeleton with {len(person_skeleton['elements'])} keypoints")
         result_skeletons.append(person_skeleton)
+
+    # Return hands-shoulders-skeleton if we have upper body keypoints (shoulders, elbows, wrists) and/or hands
+    # This is recommended for egocentric videos
+    # Check if we have any elements in hands-shoulders-skeleton (upper body + hands, excluding wrist from hands)
+    if len(hands_shoulders_skeleton["elements"]) > 0:
+        # Count upper body vs hand keypoints for logging
+        upper_body_labels = {"left_shoulder", "right_shoulder", "left_elbow", "right_elbow", "left_wrist", "right_wrist"}
+        upper_body_kps = [elem for elem in hands_shoulders_skeleton["elements"] if elem['label'] in upper_body_labels]
+        hand_kps = [elem for elem in hands_shoulders_skeleton["elements"] if elem['label'] not in upper_body_labels]
+        logger.info(f"Processed hands-shoulders-skeleton with {len(hands_shoulders_skeleton['elements'])} keypoints "
+                   f"({len(upper_body_kps)} upper body, {len(hand_kps)} hand)")
+        result_skeletons.append(hands_shoulders_skeleton)
 
     # Also return hands-skeleton if we have hand keypoints (even if body is present)
     # This allows users to choose which label to use in their project
