@@ -14,7 +14,7 @@ The generated configs use the correct format:
 """
 
 import json
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Union
 from pathlib import Path
 
 
@@ -53,18 +53,20 @@ def generate_hands_skeleton() -> Dict[str, Any]:
     svg_parts = []
 
     # Helper to create circle element
-    def create_circle(cx: float, cy: float, element_id: int, node_name: str) -> str:
+    # data-node-id must be numeric (sublabel ID) to match data-node-from/to in edges
+    def create_circle(cx: float, cy: float, element_id: int, node_name: str, node_id: int) -> str:
         return (
             f'<circle r="1" cx="{cx}" cy="{cy}" '
             f'data-type="element node" '
             f'data-element-id="{element_id}" '
             f'data-label-name="{node_name}" '
-            f'data-node-id="{node_name}"></circle>'
+            f'data-node-id="{node_id}"></circle>'
         )
 
     # Helper to create line/edge element
+    # CVAT requires numeric IDs in data-node-from and data-node-to (not names)
     def create_edge(x1: float, y1: float, x2: float, y2: float,
-                    node_from: str, node_to: str) -> str:
+                    node_from: Union[str, int], node_to: Union[str, int]) -> str:
         return (
             f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" '
             f'data-type="edge" '
@@ -170,28 +172,38 @@ def generate_hands_skeleton() -> Dict[str, Any]:
         ("right_pinky_dip", "right_pinky_tip"),
     ]
 
-    # Build SVG: edges first, then circles
+    # Create mapping from sublabel name to ID for edges
+    # CVAT requires numeric IDs in data-node-from and data-node-to
+    name_to_id = {sublabel["name"]: sublabel["id"] for sublabel in sublabels}
+
+    # Build SVG: edges first, then circles (using numeric IDs)
     for from_node, to_node in left_edges:
         x1, y1 = left_hand_positions[from_node]
         x2, y2 = left_hand_positions[to_node]
-        svg_parts.append(create_edge(x1, y1, x2, y2, from_node, to_node))
+        from_id = name_to_id[from_node]
+        to_id = name_to_id[to_node]
+        svg_parts.append(create_edge(x1, y1, x2, y2, from_id, to_id))
 
     for from_node, to_node in right_edges:
         x1, y1 = right_hand_positions[from_node]
         x2, y2 = right_hand_positions[to_node]
-        svg_parts.append(create_edge(x1, y1, x2, y2, from_node, to_node))
+        from_id = name_to_id[from_node]
+        to_id = name_to_id[to_node]
+        svg_parts.append(create_edge(x1, y1, x2, y2, from_id, to_id))
 
-    # Add circles for all keypoints
+    # Add circles for all keypoints (using numeric IDs from name_to_id mapping)
     for element_id, (node_name, (cx, cy)) in enumerate(left_hand_positions.items()):
-        svg_parts.append(create_circle(cx, cy, element_id, node_name))
+        node_id = name_to_id[node_name]
+        svg_parts.append(create_circle(cx, cy, element_id, node_name, node_id))
 
     for element_id, (node_name, (cx, cy)) in enumerate(right_hand_positions.items(), start=21):
-        svg_parts.append(create_circle(cx, cy, element_id, node_name))
+        node_id = name_to_id[node_name]
+        svg_parts.append(create_circle(cx, cy, element_id, node_name, node_id))
 
     svg = ''.join(svg_parts)
 
     return {
-        "name": "hands",
+        "name": "hands-skeleton",
         "type": "skeleton",
         "attributes": [],
         "svg": svg,
@@ -252,17 +264,19 @@ def generate_person_skeleton() -> Dict[str, Any]:
         })
 
     # Helper functions
-    def create_circle(cx: float, cy: float, element_id: int, node_name: str) -> str:
+    # data-node-id must be numeric (sublabel ID) to match data-node-from/to in edges
+    def create_circle(cx: float, cy: float, element_id: int, node_name: str, node_id: int) -> str:
         return (
             f'<circle r="1" cx="{cx}" cy="{cy}" '
             f'data-type="element node" '
             f'data-element-id="{element_id}" '
             f'data-label-name="{node_name}" '
-            f'data-node-id="{node_name}"></circle>'
+            f'data-node-id="{node_id}"></circle>'
         )
 
+    # CVAT requires numeric IDs in data-node-from and data-node-to (not names)
     def create_edge(x1: float, y1: float, x2: float, y2: float,
-                    node_from: str, node_to: str) -> str:
+                    node_from: Union[str, int], node_to: Union[str, int]) -> str:
         return (
             f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" '
             f'data-type="edge" '
@@ -409,41 +423,55 @@ def generate_person_skeleton() -> Dict[str, Any]:
         ("right_pinky_dip", "right_pinky_tip"),
     ]
 
+    # Create mapping from sublabel name to ID for edges
+    # CVAT requires numeric IDs in data-node-from and data-node-to
+    name_to_id = {sublabel["name"]: sublabel["id"] for sublabel in sublabels}
+
     svg_parts = []
 
-    # Add body edges
+    # Add body edges (using numeric IDs)
     for from_node, to_node in body_edges:
         x1, y1 = body_positions[from_node]
         x2, y2 = body_positions[to_node]
-        svg_parts.append(create_edge(x1, y1, x2, y2, from_node, to_node))
+        from_id = name_to_id[from_node]
+        to_id = name_to_id[to_node]
+        svg_parts.append(create_edge(x1, y1, x2, y2, from_id, to_id))
 
-    # Add hand edges
+    # Add left hand edges (using numeric IDs)
     for from_node, to_node in left_hand_edges:
         x1, y1 = left_hand_positions[from_node]
         x2, y2 = left_hand_positions[to_node]
-        svg_parts.append(create_edge(x1, y1, x2, y2, from_node, to_node))
+        from_id = name_to_id[from_node]
+        to_id = name_to_id[to_node]
+        svg_parts.append(create_edge(x1, y1, x2, y2, from_id, to_id))
 
+    # Add right hand edges (using numeric IDs)
     for from_node, to_node in right_hand_edges:
         x1, y1 = right_hand_positions[from_node]
         x2, y2 = right_hand_positions[to_node]
-        svg_parts.append(create_edge(x1, y1, x2, y2, from_node, to_node))
+        from_id = name_to_id[from_node]
+        to_id = name_to_id[to_node]
+        svg_parts.append(create_edge(x1, y1, x2, y2, from_id, to_id))
 
-    # Add circles for body keypoints
+    # Add circles for body keypoints (using numeric IDs from name_to_id mapping)
     for element_id, (node_name, (cx, cy)) in enumerate(body_positions.items()):
-        svg_parts.append(create_circle(cx, cy, element_id, node_name))
+        node_id = name_to_id[node_name]
+        svg_parts.append(create_circle(cx, cy, element_id, node_name, node_id))
 
-    # Add circles for left hand (element_id starts at 17)
+    # Add circles for left hand (using numeric IDs from name_to_id mapping)
     for element_id, (node_name, (cx, cy)) in enumerate(left_hand_positions.items(), start=17):
-        svg_parts.append(create_circle(cx, cy, element_id, node_name))
+        node_id = name_to_id[node_name]
+        svg_parts.append(create_circle(cx, cy, element_id, node_name, node_id))
 
-    # Add circles for right hand (element_id starts at 38)
+    # Add circles for right hand (using numeric IDs from name_to_id mapping)
     for element_id, (node_name, (cx, cy)) in enumerate(right_hand_positions.items(), start=38):
-        svg_parts.append(create_circle(cx, cy, element_id, node_name))
+        node_id = name_to_id[node_name]
+        svg_parts.append(create_circle(cx, cy, element_id, node_name, node_id))
 
     svg = ''.join(svg_parts)
 
     return {
-        "name": "person",
+        "name": "person-skeleton",
         "type": "skeleton",
         "attributes": [],
         "svg": svg,

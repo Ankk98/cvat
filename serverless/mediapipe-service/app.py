@@ -237,8 +237,19 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
     13: ring_mcp, 14: ring_pip, 15: ring_dip, 16: ring_tip,
     17: pinky_mcp, 18: pinky_pip, 19: pinky_dip, 20: pinky_tip
     """
-    skeleton = {
-        "label": "person",
+    # Determine which label to use based on what's detected
+    # We'll create skeletons for both labels if applicable
+
+    # Always create person-skeleton if pose is detected (body + hands)
+    person_skeleton = {
+        "label": "person-skeleton",
+        "type": "skeleton",
+        "elements": []
+    }
+
+    # Create hands-skeleton separately (hands only, no body)
+    hands_skeleton = {
+        "label": "hands-skeleton",
         "type": "skeleton",
         "elements": []
     }
@@ -275,7 +286,7 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
             y_pixel = y_norm * image_height
 
             # Log first few keypoints for debugging
-            if len(skeleton["elements"]) < 3:
+            if len(person_skeleton["elements"]) < 3:
                 if landmark.x != x_norm or landmark.y != y_norm:
                     logger.info(f"Pose keypoint {keypoint_name}: normalized=({landmark.x:.3f}, {landmark.y:.3f}) -> clamped=({x_norm:.3f}, {y_norm:.3f}), pixel=({x_pixel:.1f}, {y_pixel:.1f})")
                 else:
@@ -299,7 +310,7 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
                     {"name": "confidence", "value": str(confidence)}
                 ]
             }
-            skeleton["elements"].append(element)
+            person_skeleton["elements"].append(element)
 
     # Process Hands results (detailed finger keypoints)
     # Use prioritized hands if provided, otherwise use all detected hands
@@ -365,7 +376,7 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
                 y_pixel = y_norm * image_height
 
                 # Log first few hand keypoints for debugging
-                if len([e for e in skeleton["elements"] if 'hand' in e.get('label', '').lower() or 'wrist' in e.get('label', '').lower()]) < 3:
+                if len([e for e in hands_skeleton["elements"] if 'hand' in e.get('label', '').lower() or 'wrist' in e.get('label', '').lower()]) < 3:
                     if landmark.x != x_norm or landmark.y != y_norm:
                         logger.info(f"Hand keypoint {keypoint_name}: normalized=({landmark.x:.3f}, {landmark.y:.3f}) -> clamped=({x_norm:.3f}, {y_norm:.3f}), pixel=({x_pixel:.1f}, {y_pixel:.1f})")
                     else:
@@ -383,11 +394,13 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
                         {"name": "confidence", "value": str(confidence)}
                     ]
                 }
-                skeleton["elements"].append(element)
+                # Add to both person-skeleton (body + hands) and hands-skeleton (hands only)
+                person_skeleton["elements"].append(element)
+                hands_skeleton["elements"].append(element)
 
     # For egocentric videos, we want to include all keypoints but mark low-confidence ones as outside
     # Count visible keypoints (those with confidence above threshold)
-    visible_keypoints = [elem for elem in skeleton["elements"] if not elem["outside"]]
+    visible_keypoints = [elem for elem in person_skeleton["elements"] if not elem["outside"]]
 
     # Count pose vs hand keypoints for logging
     hand_labels = {f"{side}_{finger}_{joint}" for side in ["left", "right"]
@@ -395,8 +408,8 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
                    for joint in ["cmc", "mcp", "pip", "dip", "tip"] if joint != "cmc" or finger == "thumb"}
     hand_labels.update([f"{side}_wrist" for side in ["left", "right"]])
 
-    pose_keypoints = [elem for elem in skeleton["elements"] if elem['label'] not in hand_labels]
-    hand_keypoints = [elem for elem in skeleton["elements"] if elem['label'] in hand_labels]
+    pose_keypoints = [elem for elem in person_skeleton["elements"] if elem['label'] not in hand_labels]
+    hand_keypoints = [elem for elem in person_skeleton["elements"] if elem['label'] in hand_labels]
 
     # Relaxed filtering logic for egocentric videos:
     # - If hands detected: require at least 3 hand keypoints
@@ -423,8 +436,22 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
 
     logger.info(f"Detected skeleton with {len([kp for kp in pose_keypoints if not kp['outside']])} visible pose keypoints and {len([kp for kp in hand_keypoints if not kp['outside']])} visible hand keypoints")
 
-    logger.info(f"Processed combined pose+hands with {len(skeleton['elements'])} keypoints")
-    return [skeleton]
+    # Return appropriate skeletons based on what was detected
+    # CVAT will match labels by name, so only matching labels in the project will be annotated
+    result_skeletons = []
+
+    # Always return person-skeleton if we have body keypoints (with or without hands)
+    if len(pose_keypoints) > 0:
+        logger.info(f"Processed person-skeleton with {len(person_skeleton['elements'])} keypoints")
+        result_skeletons.append(person_skeleton)
+
+    # Also return hands-skeleton if we have hand keypoints (even if body is present)
+    # This allows users to choose which label to use in their project
+    if len(hand_keypoints) > 0:
+        logger.info(f"Processed hands-skeleton with {len(hands_skeleton['elements'])} keypoints")
+        result_skeletons.append(hands_skeleton)
+
+    return result_skeletons
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

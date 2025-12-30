@@ -24,12 +24,25 @@ def prepare_function_yaml(spec_file: str, function_yaml: str):
         spec_data = json.load(f)
 
     # If the JSON contains multiple labels (like raw-editor format),
-    # extract just the "person" label for the function spec
+    # extract both "person-skeleton" and "hands-skeleton" labels for the function spec
     if isinstance(spec_data, list) and len(spec_data) > 1:
-        person_label = [label for label in spec_data if label.get('name') == 'person']
+        person_label = [label for label in spec_data if label.get('name') == 'person-skeleton']
+        hands_label = [label for label in spec_data if label.get('name') == 'hands-skeleton']
+
+        # Include both labels in the spec so users can choose which to use
+        both_labels = []
         if person_label:
+            both_labels.extend(person_label)
+            print(f"  - Extracted 'person-skeleton' label from multi-label config")
+        if hands_label:
+            both_labels.extend(hands_label)
+            print(f"  - Extracted 'hands-skeleton' label from multi-label config")
+
+        if both_labels:
+            spec_data = both_labels
+        elif person_label:
+            # Fallback to just person-skeleton if hands-skeleton not found
             spec_data = person_label
-            print(f"  - Extracted 'person' label from multi-label config")
 
     # Convert to JSON string (this is what CVAT expects)
     spec_json = json.dumps(spec_data, ensure_ascii=False)

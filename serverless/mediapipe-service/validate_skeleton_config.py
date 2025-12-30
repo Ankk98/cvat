@@ -343,7 +343,7 @@ class SkeletonValidator:
                     )
 
         # For person skeleton, check if we have body + hand edges
-        if skeleton_name == 'person':
+        if skeleton_name == 'person-skeleton':
             # Should have body edges + hand edges
             # Body: ~16 edges, Hands: 20 edges each = 40, Total: ~56
             if len(lines) < 50:
