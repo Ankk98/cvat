@@ -48,6 +48,15 @@ class FunctionCallRequestSerializer(serializers.Serializer):
         required=False,
         help_text="Label mapping from the model to the task labels",
     )
+    enable_skeleton_tracking = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Enable server-side skeleton tracking for video sequences (uses MediaPipe VIDEO mode)",
+    )
+    frame_number = serializers.IntegerField(
+        required=False,
+        help_text="Frame number for timestamp calculation in video mode",
+    )
 
 
 class FunctionCallParamsSerializer(serializers.Serializer):

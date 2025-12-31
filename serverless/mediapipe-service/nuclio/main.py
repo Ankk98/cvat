@@ -42,10 +42,13 @@ def handler(context, event):
         # CVAT sends the payload directly in event.body
         data = event.body
 
-        # Extract image and threshold from request
-        # CVAT sends: {"image": "base64_string", "threshold": 0.3}
+        # Extract parameters from request
+        # CVAT sends: {"image": "...", "frame": 0, "shapes": [...], "states": [...], "threshold": 0.3}
         image_data = data.get('image')
         threshold = data.get('threshold', 0.3)
+        # CVAT uses 'frame', but we also support 'frame_number' for backwards compatibility/direct calls
+        frame_number = data.get('frame', data.get('frame_number', 0))
+        tracking_mode = data.get('tracking_mode', 'image')
 
         context.logger.info(f"Received request with keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
 
@@ -59,13 +62,20 @@ def handler(context, event):
             )
 
         # Prepare request to MediaPipe service
+        # Forward all parameters including frame_number and tracking_mode for video mode
         mediapipe_payload = {
             'image': image_data,
-            'threshold': threshold
+            'threshold': threshold,
+            'frame_number': frame_number,
+            'tracking_mode': tracking_mode,
+            'job_id': data.get('job_id'),
+            'task_id': data.get('task_id'),
+            'shapes': data.get('shapes'),
+            'states': data.get('states')
         }
 
         context.logger.info(f"Forwarding request to MediaPipe service at {DETECT_ENDPOINT}")
-        context.logger.info(f"Image data length: {len(image_data) if image_data else 0}, threshold: {threshold}")
+        context.logger.info(f"Image data length: {len(image_data) if image_data else 0}, threshold: {threshold}, frame: {frame_number}, mode: {tracking_mode}")
 
         # Forward request to MediaPipe service
         try:
@@ -82,8 +92,22 @@ def handler(context, event):
 
             context.logger.info(f"MediaPipe service returned {len(result) if isinstance(result, list) else 'non-list'} result(s)")
 
-            # Return the response directly as JSON (MediaPipe service already returns CVAT-compatible format)
-            # CVAT expects a list of skeleton objects
+            # Use FUNCTION_KIND to decide on response formatting
+            function_kind = os.getenv("FUNCTION_KIND", "detector")
+
+            if function_kind == "tracker" and isinstance(result, list):
+                context.logger.info("Formatting response for CVAT tracker logic")
+
+                # If we are in tracker mode and have shapes/states in request,
+                # it's likely a single-object track.
+                # The MediaPipe service already filters by distance if input shapes were provided.
+
+                result = {
+                    "shapes": result,
+                    "states": [None] * len(result)
+                }
+
+            # Return the response directly as JSON
             return context.Response(
                 body=json.dumps(result),
                 headers={},
@@ -149,4 +173,3 @@ def handler(context, event):
             content_type='application/json',
             status_code=500
         )
-

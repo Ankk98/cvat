@@ -151,10 +151,45 @@ class CVATIntegration:
             logger.error("❌ Cannot find CVAT functions endpoint")
             return False
 
+        # Load skeleton configuration from JSON file
+        skeleton_config_path = Path(__file__).parent / "mediapipe-person-skeleton.json"
+        if not skeleton_config_path.exists():
+            logger.error(f"❌ Skeleton config not found: {skeleton_config_path}")
+            return False
+        
+        with open(skeleton_config_path) as f:
+            skeleton_config = json.load(f)
+        
+        # Also load hands-skeleton and hands-shoulders-skeleton configs
+        hands_config_path = Path(__file__).parent / "mediapipe-hands-skeleton.json"
+        hands_shoulders_config_path = Path(__file__).parent / "mediapipe-hands-shoulders-skeleton.json"
+        
+        all_labels = []
+        
+        # Add person-skeleton
+        if skeleton_config:
+            all_labels.append(skeleton_config[0])
+        
+        # Add hands-skeleton
+        if hands_config_path.exists():
+            with open(hands_config_path) as f:
+                hands_config = json.load(f)
+            if hands_config:
+                all_labels.append(hands_config[0])
+        
+        # Add hands-shoulders-skeleton
+        if hands_shoulders_config_path.exists():
+            with open(hands_shoulders_config_path) as f:
+                hands_shoulders_config = json.load(f)
+            if hands_shoulders_config:
+                all_labels.append(hands_shoulders_config[0])
+        
+        logger.info(f"Loaded {len(all_labels)} skeleton configurations")
+
         # Function configuration for CVAT
         function_config = {
             "name": "MediaPipe Pose Detection",
-            "description": "33-point pose estimation optimized for egocentric vision",
+            "description": "Full skeleton detection (57 keypoints) with tracking support for egocentric vision",
             "type": "detector",
             "url": f"{self.service_url}/detect",
             "method": "POST",
@@ -168,35 +203,20 @@ class CVATIntegration:
                     "min": 0.0,
                     "max": 1.0,
                     "description": "Confidence threshold for pose keypoints"
+                },
+                "enable_skeleton_tracking": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Enable server-side skeleton tracking for video sequences"
+                },
+                "frame_number": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "Frame number for timestamp calculation (video mode)"
                 }
             },
             "spec": {
-                "labels": [
-                    {
-                        "name": "person-skeleton",
-                        "type": "skeleton",
-                        "svg": "<circle r=\"2\" cx=\"50\" cy=\"20\" data-type=\"element node\" data-element-id=\"0\" data-node-id=\"0\" data-label-name=\"nose\"></circle><circle r=\"2\" cx=\"35\" cy=\"15\" data-type=\"element node\" data-element-id=\"1\" data-node-id=\"1\" data-label-name=\"left_eye\"></circle><circle r=\"2\" cx=\"65\" cy=\"15\" data-type=\"element node\" data-element-id=\"2\" data-node-id=\"2\" data-label-name=\"right_eye\"></circle><circle r=\"2\" cx=\"25\" cy=\"25\" data-type=\"element node\" data-element-id=\"3\" data-node-id=\"3\" data-label-name=\"left_ear\"></circle><circle r=\"2\" cx=\"75\" cy=\"25\" data-type=\"element node\" data-element-id=\"4\" data-node-id=\"4\" data-label-name=\"right_ear\"></circle><circle r=\"2\" cx=\"50\" cy=\"50\" data-type=\"element node\" data-element-id=\"5\" data-node-id=\"5\" data-label-name=\"left_shoulder\"></circle><circle r=\"2\" cx=\"50\" cy=\"70\" data-type=\"element node\" data-element-id=\"6\" data-node-id=\"6\" data-label-name=\"right_shoulder\"></circle><circle r=\"2\" cx=\"30\" cy=\"70\" data-type=\"element node\" data-element-id=\"7\" data-node-id=\"7\" data-label-name=\"left_elbow\"></circle><circle r=\"2\" cx=\"70\" cy=\"90\" data-type=\"element node\" data-element-id=\"8\" data-node-id=\"8\" data-label-name=\"right_elbow\"></circle><circle r=\"2\" cx=\"20\" cy=\"90\" data-type=\"element node\" data-element-id=\"9\" data-node-id=\"9\" data-label-name=\"left_wrist\"></circle><circle r=\"2\" cx=\"80\" cy=\"110\" data-type=\"element node\" data-element-id=\"10\" data-node-id=\"10\" data-label-name=\"right_wrist\"></circle><circle r=\"2\" cx=\"45\" cy=\"85\" data-type=\"element node\" data-element-id=\"11\" data-node-id=\"11\" data-label-name=\"left_hip\"></circle><circle r=\"2\" cx=\"55\" cy=\"85\" data-type=\"element node\" data-element-id=\"12\" data-node-id=\"12\" data-label-name=\"right_hip\"></circle><circle r=\"2\" cx=\"40\" cy=\"110\" data-type=\"element node\" data-element-id=\"13\" data-node-id=\"13\" data-label-name=\"left_knee\"></circle><circle r=\"2\" cx=\"60\" cy=\"130\" data-type=\"element node\" data-element-id=\"14\" data-node-id=\"14\" data-label-name=\"right_knee\"></circle><circle r=\"2\" cx=\"35\" cy=\"130\" data-type=\"element node\" data-element-id=\"15\" data-node-id=\"15\" data-label-name=\"left_ankle\"></circle><circle r=\"2\" cx=\"65\" cy=\"150\" data-type=\"element node\" data-element-id=\"16\" data-node-id=\"16\" data-label-name=\"right_ankle\"></circle>",
-                        "sublabels": [
-                            {"id": 0, "name": "nose", "type": "points"},
-                            {"id": 1, "name": "left_eye", "type": "points"},
-                            {"id": 2, "name": "right_eye", "type": "points"},
-                            {"id": 3, "name": "left_ear", "type": "points"},
-                            {"id": 4, "name": "right_ear", "type": "points"},
-                            {"id": 5, "name": "left_shoulder", "type": "points"},
-                            {"id": 6, "name": "right_shoulder", "type": "points"},
-                            {"id": 7, "name": "left_elbow", "type": "points"},
-                            {"id": 8, "name": "right_elbow", "type": "points"},
-                            {"id": 9, "name": "left_wrist", "type": "points"},
-                            {"id": 10, "name": "right_wrist", "type": "points"},
-                            {"id": 11, "name": "left_hip", "type": "points"},
-                            {"id": 12, "name": "right_hip", "type": "points"},
-                            {"id": 13, "name": "left_knee", "type": "points"},
-                            {"id": 14, "name": "right_knee", "type": "points"},
-                            {"id": 15, "name": "left_ankle", "type": "points"},
-                            {"id": 16, "name": "right_ankle", "type": "points"}
-                        ]
-                    }
-                ]
+                "labels": all_labels,  # sublabels loaded from JSON
             }
         }
 
@@ -209,6 +229,7 @@ class CVATIntegration:
 
             if response.status_code in [200, 201]:
                 logger.info("✅ MediaPipe function registered successfully with CVAT")
+                logger.info(f"   - Registered {len(all_labels)} skeleton labels")
                 return True
             elif response.status_code == 401:
                 logger.error("❌ CVAT authentication required. Please provide auth token.")

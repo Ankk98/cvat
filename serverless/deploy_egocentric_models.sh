@@ -206,19 +206,33 @@ fi
 deploy_cpu_model() {
     local path="$1"
     local label="$2"
+    local custom_config_name="${3:-}"
 
     log_info "Deploying $label using CPU deployment..."
 
     # Find the correct function config file
     local func_config=""
-    if [[ -f "$path/function.yaml" ]]; then
-        func_config="$path/function.yaml"
-    elif [[ -f "$path/nuclio/function.yaml" ]]; then
-        func_config="$path/nuclio/function.yaml"
-        path="$path/nuclio"  # Update path to nuclio directory
+
+    if [[ -n "$custom_config_name" ]]; then
+        if [[ -f "$path/$custom_config_name" ]]; then
+             func_config="$path/$custom_config_name"
+        elif [[ -f "$path/nuclio/$custom_config_name" ]]; then
+             func_config="$path/nuclio/$custom_config_name"
+             path="$path/nuclio"
+        else
+             log_error "Could not find custom config $custom_config_name in $path"
+             return 1
+        fi
     else
-        log_error "Could not find function.yaml in $path or $path/nuclio/"
-        return 1
+        if [[ -f "$path/function.yaml" ]]; then
+            func_config="$path/function.yaml"
+        elif [[ -f "$path/nuclio/function.yaml" ]]; then
+            func_config="$path/nuclio/function.yaml"
+            path="$path/nuclio"  # Update path to nuclio directory
+        else
+            log_error "Could not find function.yaml in $path or $path/nuclio/"
+            return 1
+        fi
     fi
 
     log_info "Using function config: $func_config"
@@ -495,6 +509,7 @@ if [[ "$STOP_SERVICES" = true ]]; then
         "pth-facebookresearch-detectron2-mask-rcnn-r50-rocm"
         "pth-mmpose-hrnet32"
         "pth-google-mediapipe-pose-hands"
+        "pth-google-mediapipe-pose-hands-tracker"
     )
 
     log_info "Stopping Nuclio functions related to egocentric models..."
@@ -591,22 +606,42 @@ if [[ "$DEPLOY_MEDIAPIPE" = true ]]; then
     spec_file="$mediapipe_dir/mediapipe-skeletons-raw-editor.json"
 
     if [[ -f "$prepare_script" ]] && [[ -f "$spec_file" ]]; then
-        log_info "Preparing function.yaml with skeleton spec..."
+        log_info "Preparing function.yaml (Detector) with skeleton spec..."
         if python3 "$prepare_script" "$spec_file" "$nuclio_path/function.yaml"; then
             log_success "function.yaml prepared successfully"
         else
             log_warning "Failed to prepare function.yaml, continuing with existing file..."
         fi
+
+        # Prepare tracker version
+        log_info "Preparing function-tracker.yaml (Tracker) with skeleton spec..."
+        if [[ -f "$nuclio_path/function-tracker.yaml" ]]; then
+            if python3 "$prepare_script" "$spec_file" "$nuclio_path/function-tracker.yaml"; then
+                log_success "function-tracker.yaml prepared successfully"
+            else
+                log_warning "Failed to prepare function-tracker.yaml"
+            fi
+        else
+             log_warning "function-tracker.yaml not found, skipping"
+        fi
     else
         log_warning "prepare_function_yaml.py or skeleton JSON not found, skipping spec injection"
     fi
 
-    # Step 5: Deploy Nuclio function
-    log_info "Deploying MediaPipe Nuclio function..."
-    if deploy_cpu_model "$nuclio_path" "MediaPipe Pose + Hands"; then
-        log_success "MediaPipe Nuclio function deployed successfully"
+    # Step 5: Deploy Nuclio functions
+    log_info "Deploying MediaPipe (Detector)..."
+    if deploy_cpu_model "$nuclio_path" "MediaPipe Pose + Hands (Detector)"; then
+        log_success "MediaPipe Detector deployed successfully"
     else
-        log_error "Failed to deploy MediaPipe Nuclio function"
+        log_error "Failed to deploy MediaPipe Detector"
+        exit 1
+    fi
+
+    log_info "Deploying MediaPipe (Tracker)..."
+    if deploy_cpu_model "$nuclio_path" "MediaPipe Pose + Hands (Tracker)" "function-tracker.yaml"; then
+        log_success "MediaPipe Tracker deployed successfully"
+    else
+        log_error "Failed to deploy MediaPipe Tracker"
         exit 1
     fi
 
@@ -615,17 +650,16 @@ if [[ "$DEPLOY_MEDIAPIPE" = true ]]; then
     log_success "MediaPipe deployment completed!"
     echo
     log_info "MediaPipe Information:"
-    log_info "  📍 Function Name: pth-google-mediapipe-pose-hands"
     log_info "  🔗 Service: http://mediapipe-pose:8000 (Docker container on cvat_cvat network)"
-    log_info "  🎯 Type: Detector (Skeleton - 57 keypoints: body + hands)"
+    log_info "  🎯 Detector: pth-google-mediapipe-pose-hands (Auto Annotation)"
+    log_info "  🎯 Tracker:  pth-google-mediapipe-pose-hands-tracker (AI Tools Tracking)"
     echo
     log_info "Management:"
-    log_info "  Check function: nuctl get function pth-google-mediapipe-pose-hands --platform local"
-    log_info "  Check service: docker ps | grep mediapipe-pose"
+    log_info "  Check functions: nuctl get function --platform local"
     log_info "  Stop all: $0 --stop"
     echo
     log_info "Next steps:"
-    log_info "  1. The function will appear in CVAT's auto-annotation dropdown"
+    log_info "  1. The functions will appear in CVAT's Detectors AND Trackers tabs"
     log_info "  2. Test with egocentric video datasets"
     echo
 

@@ -111,6 +111,7 @@ services:
           || PathPrefix(`/django-rq`))
       traefik.http.routers.cvat.entrypoints: web
     volumes:
+      - .:/home/django
       - cvat_data:/home/django/data
       - cvat_keys:/home/django/keys
       - cvat_logs:/home/django/logs
@@ -178,11 +179,14 @@ services:
       NUMPROCS: 1
     command: run worker annotation
     volumes:
+      - .:/home/django
       - cvat_data:/home/django/data
       - cvat_keys:/home/django/keys
       - cvat_logs:/home/django/logs
     networks:
       - cvat
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   cvat_worker_webhooks:
     container_name: cvat_worker_webhooks

@@ -44,6 +44,7 @@ from cvat.apps.engine.models import (
     RequestTarget,
     ShapeType,
     SourceType,
+    StorageChoice,
     Task,
 )
 from cvat.apps.engine.rq import RequestId, define_dependent_job
@@ -110,39 +111,17 @@ class LambdaGateway:
         return response
 
     def list(self):
-        # Always add SAM Auto as a built-in detector function
-        try:
-            sam_auto_data = {
-                "metadata": {
-                    "name": "pth-facebookresearch-sam-auto",
-                    "namespace": "cvat",
-                    "labels": {"nuclio.io/project-name": "cvat"},
-                    "annotations": {
-                        "name": "SAM Auto Segmentation",
-                        "type": "detector",
-                        "framework": "pytorch",
-                        "description": "Automatic object segmentation using Segment Anything Model",
-                        "spec": '[{"name": "object", "type": "mask", "attributes": [{"name": "confidence", "input_type": "number", "values": [0, 1]}, {"name": "area", "input_type": "number"}]}]'
-                    }
-                },
-                "spec": {
-                    "description": "SAM Auto Segmentation service",
-                    "runtime": "python:3.10",
-                    "handler": "main_detector:handler",
-                    "eventTimeout": "60s"
-                },
-                "status": {
-                    "state": "ready"
-                }
-            }
-            yield LambdaFunction(self, sam_auto_data)
-        except Exception as e:
-            slogger.glob.error(f"Failed to add SAM Auto built-in function: {e}")
-
         # Try to get Nuclio functions
         try:
             data = self._http(url=self.NUCLIO_ROOT_URL)
-            for item in data.values():
+            if isinstance(data, dict):
+                functions = data.values()
+            elif isinstance(data, (list, tuple)):
+                functions = data
+            else:
+                functions = []
+
+            for item in functions:
                 try:
                     yield LambdaFunction(self, item)
                 except InvalidFunctionMetadataError:
@@ -151,42 +130,11 @@ class LambdaGateway:
             slogger.glob.warning(f"Failed to retrieve Nuclio functions: {e}. Built-in functions will still be available.")
 
     def get(self, func_id):
-        # Handle SAM Auto built-in function
-        if func_id == "pth-facebookresearch-sam-auto":
-            sam_auto_data = {
-                "metadata": {
-                    "name": "pth-facebookresearch-sam-auto",
-                    "namespace": "cvat",
-                    "labels": {"nuclio.io/project-name": "cvat"},
-                    "annotations": {
-                        "name": "SAM Auto Segmentation",
-                        "type": "detector",
-                        "framework": "pytorch",
-                        "description": "Automatic object segmentation using Segment Anything Model",
-                        "spec": '[{"name": "object", "type": "mask", "attributes": [{"name": "confidence", "input_type": "number", "values": [0, 1]}, {"name": "area", "input_type": "number"}]}]'
-                    }
-                },
-                "spec": {
-                    "description": "SAM Auto Segmentation service",
-                    "runtime": "python:3.10",
-                    "handler": "main_detector:handler",
-                    "eventTimeout": "60s"
-                },
-                "status": {
-                    "state": "ready"
-                }
-            }
-            return LambdaFunction(self, sam_auto_data)
-
         data = self._http(url=self.NUCLIO_ROOT_URL + "/" + func_id)
         response = LambdaFunction(self, data)
         return response
 
     def invoke(self, func, payload):
-        # Handle built-in functions
-        if func.id == "pth-facebookresearch-sam-auto":
-            return self._invoke_sam_auto(payload)
-
         # Use direct invocation for Nuclio functions
         invoke_mode = settings.NUCLIO.get("INVOKE_METHOD", "direct")
         invoke_method = {
@@ -195,22 +143,6 @@ class LambdaGateway:
         }
 
         return invoke_method[invoke_mode](func, payload)
-
-    def _invoke_sam_auto(self, payload):
-        """Invoke SAM Auto segmentation via the deployed Nuclio function."""
-        # For SAM Auto, use the deployed function at port 32800 (from the deployment output)
-        import requests
-        try:
-            response = requests.post(
-                "http://localhost:32800",  # SAM function port
-                json=payload,
-                timeout=60  # Longer timeout for segmentation
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            slogger.glob.error(f"SAM Auto service call failed: {e}")
-            raise
 
     def _invoke_via_dashboard(self, func, payload):
         return self._http(
@@ -548,11 +480,15 @@ class LambdaFunction:
                     )
 
         if self.kind == FunctionKind.DETECTOR:
-            payload.update({"image": self._get_image(db_task, mandatory_arg("frame"))})
+            payload.update({
+                "image": self._get_image(db_task, data.get("frame", 0)),
+                "frame": data.get("frame", 0),
+            })
         elif self.kind == FunctionKind.INTERACTOR:
             payload.update(
                 {
-                    "image": self._get_image(db_task, mandatory_arg("frame")),
+                    "image": self._get_image(db_task, data.get("frame", 0)),
+                    "frame": data.get("frame", 0),
                     "pos_points": mandatory_arg("pos_points"),
                     "neg_points": mandatory_arg("neg_points"),
                     "obj_bbox": data.get("obj_bbox", None),
@@ -614,7 +550,8 @@ class LambdaFunction:
 
                 payload.update(
                     {
-                        "image": self._get_image(db_task, mandatory_arg("frame")),
+                        "image": self._get_image(db_task, data.get("frame", 0)),
+                        "frame": data.get("frame", 0),
                         "shapes": list(map(prepare_shape, shapes)),
                         "states": [
                             (
@@ -635,6 +572,19 @@ class LambdaFunction:
                 "`{}` lambda function has incorrect type: {}".format(self.id, self.kind),
                 code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+        # Pass additional context if available
+        for key in ("tracking_mode", "job_id", "task_id"):
+            if key in data:
+                payload[key] = data[key]
+            elif key == "task_id":
+                payload[key] = db_task.id
+            elif key == "job_id" and db_job:
+                payload[key] = db_job.id
+
+        # In interactive tracker mode, we usually want video mode if not specified
+        if self.kind == FunctionKind.TRACKER and "tracking_mode" not in payload:
+            payload["tracking_mode"] = "video"
 
         if is_interactive and request:
             interactive_function_call_signal.send(sender=self, request=request)
@@ -706,21 +656,49 @@ class LambdaFunction:
 
             response = converter.convert(
                 conv_mask_to_poly=data.get("conv_mask_to_poly", False),
-                frame=mandatory_arg("frame"),
+                frame=data.get("frame", 0),
                 annotations=response_filtered,
             )
         elif self.kind == FunctionKind.TRACKER:
-            if "shapes" in response and not self.supported_shape_types:
-                response["shapes"] = [
-                    None if points is None else {"type": ShapeType.RECTANGLE, "points": points}
-                    for points in response["shapes"]
-                ]
+            if "shapes" in response:
+                # Map labels for tracker shapes
+                for item in response["shapes"]:
+                    item_label = item["label"]
+                    if item_label in mapping:
+                        db_label = mapping[item_label]["db_label"]
+                        item["label"] = db_label.name
+                        item["attributes"] = transform_attributes(
+                            item.get("attributes", {}),
+                            mapping[item_label]["attributes"],
+                            db_label.attributespec_set.values(),
+                        )
+
+                        if "elements" in item:
+                            sublabels = mapping[item_label]["sublabels"]
+                            item["elements"] = [x for x in item["elements"] if x["label"] in sublabels]
+                            for element in item["elements"]:
+                                element_label = element["label"]
+                                sublabel_info = sublabels[element_label]
+                                db_label = sublabel_info["db_label"]
+                                element["label"] = db_label.name
+                                element["attributes"] = transform_attributes(
+                                    element.get("attributes", {}),
+                                    sublabel_info["attributes"],
+                                    db_label.attributespec_set.values(),
+                                )
+
+                if not self.supported_shape_types:
+                    response["shapes"] = [
+                        None if points is None else {"type": ShapeType.RECTANGLE, "points": points}
+                        for points in response["shapes"]
+                    ]
+
             response["states"] = [
                 # We could've used .sign_object, but that unconditionally applies
                 # an extra layer of Base64 encoding, bloating each state by 33%.
                 # So we just encode the state manually instead.
                 signer.sign(json.dumps(state, separators=(",", ":")))
-                for state in response["states"]
+                for state in response.get("states", [])
             ]
 
         return response
@@ -765,6 +743,8 @@ class LambdaQueue:
         request,
         *,
         job: Optional[int] = None,
+        enable_skeleton_tracking: bool = False,
+        frame_number: Optional[int] = None,
     ) -> LambdaJob:
         queue = self._get_queue()
         rq_id = RequestId(
@@ -798,20 +778,29 @@ class LambdaQueue:
                     db_obj=Job.objects.get(pk=job) if job else Task.objects.get(pk=task),
                     function_id=lambda_func.id,
                 )
+                # Build kwargs for the job
+                job_kwargs = {
+                    "function": lambda_func,
+                    "threshold": threshold,
+                    "task": task,
+                    "job": job,
+                    "cleanup": cleanup,
+                    "conv_mask_to_poly": conv_mask_to_poly,
+                    "mapping": mapping,
+                    "max_distance": max_distance,
+                }
+
+                # Add skeleton tracking flag if enabled
+                if enable_skeleton_tracking:
+                    job_kwargs["enable_skeleton_tracking"] = True
+                if frame_number is not None:
+                    job_kwargs["frame_number"] = frame_number
+
                 rq_job = queue.create_job(
                     LambdaJob(None),
                     job_id=rq_id,
                     meta=meta,
-                    kwargs={
-                        "function": lambda_func,
-                        "threshold": threshold,
-                        "task": task,
-                        "job": job,
-                        "cleanup": cleanup,
-                        "conv_mask_to_poly": conv_mask_to_poly,
-                        "mapping": mapping,
-                        "max_distance": max_distance,
-                    },
+                    kwargs=job_kwargs,
                     depends_on=define_dependent_job(queue, user_id),
                     result_ttl=self.RESULT_TTL.total_seconds(),
                     failure_ttl=self.FAILED_TTL.total_seconds(),
@@ -915,6 +904,11 @@ class DetectionResultConverter:
                 shape["points"] = rle
 
             if shape["type"] == "skeleton":
+                # CVAT backend expects empty points for skeleton type.
+                # Bbox should not be provided here as it causes validation error:
+                # 'invalid length for shape type skeleton' (expected 0).
+                shape["points"] = []
+
                 parsed_elements = [
                     self._parse_anno(
                         labels=label["sublabels"],
@@ -924,6 +918,8 @@ class DetectionResultConverter:
                     )
                     for x in anno["elements"]
                 ]
+
+                parsed_elements = [el for el in parsed_elements if el is not None]
 
                 # find a center to set position of missing points
                 center = [0, 0]
@@ -1079,6 +1075,13 @@ class LambdaJob:
             if frame in db_task.data.deleted_frames:
                 continue
 
+            # Determine tracking mode for detector
+            tracking_mode = (
+                "video"
+                if db_task.data.get_frame_step() == 1
+                else "image"
+            )
+
             annotations = function.invoke(
                 db_task,
                 db_job=db_job,
@@ -1087,6 +1090,7 @@ class LambdaJob:
                     "mapping": mapping,
                     "threshold": threshold,
                     "conv_mask_to_poly": conv_mask_to_poly,
+                    "tracking_mode": tracking_mode,
                 },
                 converter=converter,
             )
@@ -1255,14 +1259,28 @@ class LambdaJob:
                 assert False
 
         if function.kind == FunctionKind.DETECTOR:
-            cls._call_detector(
-                function,
-                db_task,
-                kwargs.get("threshold"),
-                kwargs.get("mapping"),
-                kwargs.get("conv_mask_to_poly"),
-                db_job=db_job,
-            )
+            # Check if skeleton tracking is enabled
+            if kwargs.get("enable_skeleton_tracking"):
+                # Use skeleton track builder for video tracking
+                from cvat.apps.lambda_manager.skeleton_tracker import SkeletonTrackBuilder
+                builder = SkeletonTrackBuilder(db_task, db_job)
+                builder.build_and_submit_tracks(
+                    function,
+                    kwargs.get("threshold"),
+                    kwargs.get("mapping"),
+                    kwargs.get("conv_mask_to_poly"),
+                    kwargs.get("max_distance") or 150.0,
+                )
+            else:
+                # Use standard detector (frame-by-frame)
+                cls._call_detector(
+                    function,
+                    db_task,
+                    kwargs.get("threshold"),
+                    kwargs.get("mapping"),
+                    kwargs.get("conv_mask_to_poly"),
+                    db_job=db_job,
+                )
         elif function.kind == FunctionKind.REID:
             cls._call_reid(
                 function,
@@ -1386,7 +1404,7 @@ class FunctionViewSet(viewsets.ViewSet):
 
         converter = None
 
-        if lambda_func.kind == FunctionKind.DETECTOR:
+        if lambda_func.kind in (FunctionKind.DETECTOR, FunctionKind.TRACKER):
             converter = DetectionResultConverter(db_task)
 
         response = lambda_func.invoke(
@@ -1492,6 +1510,9 @@ class RequestViewSet(viewsets.ViewSet):
             conv_mask_to_poly = request_data.get("conv_mask_to_poly", False)
             mapping = request_data.get("mapping")
             max_distance = request_data.get("max_distance")
+            # New parameters for skeleton tracking
+            enable_skeleton_tracking = request_data.get("enable_skeleton_tracking", False)
+            frame_number = request_data.get("frame_number")
         except KeyError as err:
             raise ValidationError(
                 "`{}` lambda function was run ".format(request_data.get("function", "undefined"))
@@ -1512,6 +1533,8 @@ class RequestViewSet(viewsets.ViewSet):
             max_distance,
             request,
             job=job,
+            enable_skeleton_tracking=enable_skeleton_tracking,
+            frame_number=frame_number,
         )
 
         handle_function_call(function, job or task, category="batch")

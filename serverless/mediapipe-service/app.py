@@ -26,6 +26,7 @@ import io
 import json
 import logging
 import os
+import time
 from typing import Dict, List, Optional, Any
 
 import cv2
@@ -46,84 +47,149 @@ mp_pose = mp.tasks.vision.PoseLandmarker
 mp_hands = mp.tasks.vision.HandLandmarker
 mp_vision = mp.tasks.vision
 
-# Global detectors (initialized on startup)
-pose_detector = None
-hands_detector = None
+# Global stateless detectors for IMAGE mode (interactive/random access)
+image_pose_detector = None
+image_hands_detector = None
 
-def init_detectors():
-    """Initialize MediaPipe pose and hands detectors with optimized settings."""
-    global pose_detector, hands_detector
+def get_image_mode_detectors():
+    """Get global stateless detectors for IMAGE mode."""
+    global image_pose_detector, image_hands_detector
 
-    # Initialize Pose detector
-    if pose_detector is None:
-        logger.info("Initializing MediaPipe Pose detector...")
+    if image_pose_detector is None:
+        logger.info("Initializing MediaPipe IMAGE mode detectors...")
 
-        # Use pre-downloaded pose landmarker model (downloaded during Docker build)
+        # Use pre-downloaded pose landmarker model
         pose_model_path = "/tmp/pose_landmarker_lite.task"
         if not os.path.exists(pose_model_path):
-            logger.warning("Pose model not found at /tmp/pose_landmarker_lite.task, attempting download...")
             import urllib.request
             pose_url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
-            try:
-                urllib.request.urlretrieve(pose_url, pose_model_path)
-                logger.info("Pose model downloaded successfully")
-            except Exception as e:
-                logger.error(f"Failed to download pose model: {e}")
-                raise
+            urllib.request.urlretrieve(pose_url, pose_model_path)
 
-        # Create pose landmarker options
-        # Lower thresholds for egocentric videos (was 0.5, now 0.3)
+        # IMAGE mode options
         pose_options = mp.tasks.vision.PoseLandmarkerOptions(
-            base_options=mp.tasks.BaseOptions(
-                model_asset_path=pose_model_path
-            ),
+            base_options=mp.tasks.BaseOptions(model_asset_path=pose_model_path),
             running_mode=mp.tasks.vision.RunningMode.IMAGE,
             num_poses=1,
-            min_pose_detection_confidence=0.3,  # Lowered from 0.5 for egocentric videos
-            min_pose_presence_confidence=0.3,  # Lowered from 0.5 for egocentric videos
-            min_tracking_confidence=0.3,  # Lowered from 0.5 for egocentric videos
+            min_pose_detection_confidence=0.3,
+            min_pose_presence_confidence=0.3,
+            min_tracking_confidence=0.3,
             output_segmentation_masks=False
         )
+        image_pose_detector = mp_pose.create_from_options(pose_options)
 
-        # Create the pose landmarker
-        pose_detector = mp_pose.create_from_options(pose_options)
-        logger.info("MediaPipe Pose detector initialized successfully")
-
-    # Initialize Hands detector
-    if hands_detector is None:
-        logger.info("Initializing MediaPipe Hands detector...")
-
-        # Use pre-downloaded hand landmarker model (downloaded during Docker build)
+        # Use pre-downloaded hand landmarker model
         hands_model_path = "/tmp/hand_landmarker.task"
         if not os.path.exists(hands_model_path):
-            logger.warning("Hand model not found at /tmp/hand_landmarker.task, attempting download...")
             import urllib.request
             hands_url = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
-            try:
-                urllib.request.urlretrieve(hands_url, hands_model_path)
-                logger.info("Hand model downloaded successfully")
-            except Exception as e:
-                logger.error(f"Failed to download hand model: {e}")
-                raise
+            urllib.request.urlretrieve(hands_url, hands_model_path)
 
-        # Create hand landmarker options
-        # Lower thresholds for egocentric videos (was 0.5, now 0.3)
+        # IMAGE mode options
         hands_options = mp.tasks.vision.HandLandmarkerOptions(
-            base_options=mp.tasks.BaseOptions(
-                model_asset_path=hands_model_path
-            ),
+            base_options=mp.tasks.BaseOptions(model_asset_path=hands_model_path),
             running_mode=mp.tasks.vision.RunningMode.IMAGE,
-            num_hands=2,  # Detect up to 2 hands
-            min_hand_detection_confidence=0.3,  # Lowered from 0.5 for egocentric videos
-            min_hand_presence_confidence=0.3,  # Lowered from 0.5 for egocentric videos
-            min_tracking_confidence=0.3  # Lowered from 0.5 for egocentric videos
+            num_hands=2,
+            min_hand_detection_confidence=0.3,
+            min_hand_presence_confidence=0.3,
+            min_tracking_confidence=0.3
         )
+        image_hands_detector = mp_hands.create_from_options(hands_options)
 
-        # Create the hand landmarker
-        hands_detector = mp_hands.create_from_options(hands_options)
-        logger.info("MediaPipe Hands detector initialized successfully")
+    return image_pose_detector, image_hands_detector
 
-    return pose_detector, hands_detector
+# Session management
+class DetectorSession:
+    def __init__(self):
+        self.pose_detector = None
+        self.hands_detector = None
+        self.last_access = time.time()
+        self.last_timestamp = -1
+
+    def close(self):
+        if self.pose_detector:
+            self.pose_detector.close()
+            self.pose_detector = None
+        if self.hands_detector:
+            self.hands_detector.close()
+            self.hands_detector = None
+
+sessions: Dict[str, DetectorSession] = {}
+
+def get_session_detectors(session_id: str):
+    """Get or create detectors for a specific session."""
+    global sessions
+
+    # Cleanup expired sessions (older than 10 minutes)
+    now = time.time()
+    expired = [k for k, v in sessions.items() if now - v.last_access > 600]
+    for k in expired:
+        logger.info(f"Closing expired session {k}")
+        sessions[k].close()
+        del sessions[k]
+
+    # Create new session if needed
+    if session_id not in sessions:
+        logger.info(f"Creating new session {session_id}")
+        sessions[session_id] = DetectorSession()
+
+        # Initialize detectors for this session
+        try:
+            # Use pre-downloaded pose landmarker model (downloaded during Docker build)
+            pose_model_path = "/tmp/pose_landmarker_lite.task"
+            if not os.path.exists(pose_model_path):
+                logger.warning("Pose model not found at /tmp/pose_landmarker_lite.task, attempting download...")
+                import urllib.request
+                pose_url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+                urllib.request.urlretrieve(pose_url, pose_model_path)
+
+            # Create pose landmarker options
+            pose_options = mp.tasks.vision.PoseLandmarkerOptions(
+                base_options=mp.tasks.BaseOptions(
+                    model_asset_path=pose_model_path
+                ),
+                running_mode=mp.tasks.vision.RunningMode.VIDEO,
+                num_poses=1,
+                min_pose_detection_confidence=0.3,
+                min_pose_presence_confidence=0.3,
+                min_tracking_confidence=0.3,
+                output_segmentation_masks=False
+            )
+            sessions[session_id].pose_detector = mp_pose.create_from_options(pose_options)
+
+            # Use pre-downloaded hand landmarker model
+            hands_model_path = "/tmp/hand_landmarker.task"
+            if not os.path.exists(hands_model_path):
+                logger.warning("Hand model not found at /tmp/hand_landmarker.task, attempting download...")
+                import urllib.request
+                hands_url = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+                urllib.request.urlretrieve(hands_url, hands_model_path)
+
+            # Create hand landmarker options
+            hands_options = mp.tasks.vision.HandLandmarkerOptions(
+                base_options=mp.tasks.BaseOptions(
+                    model_asset_path=hands_model_path
+                ),
+                running_mode=mp.tasks.vision.RunningMode.VIDEO,
+                num_hands=2,
+                min_hand_detection_confidence=0.3,
+                min_hand_presence_confidence=0.3,
+                min_tracking_confidence=0.3
+            )
+            sessions[session_id].hands_detector = mp_hands.create_from_options(hands_options)
+
+            logger.info(f"Initialized detectors for session {session_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize detectors for session {session_id}: {e}")
+            if session_id in sessions:
+                sessions[session_id].close()
+                del sessions[session_id]
+            raise
+
+    # Update access time
+    sessions[session_id].last_access = now
+
+    return sessions[session_id].pose_detector, sessions[session_id].hands_detector
 
 def prioritize_hands(hands_results, image_width: int, image_height: int, center_weight: float = 0.5) -> List:
     """
@@ -244,43 +310,46 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
     person_skeleton = {
         "label": "person-skeleton",
         "type": "skeleton",
-        "elements": []
+        "elements": [],
+        "points": []
     }
 
     # Create hands-skeleton separately (hands only, no body)
     hands_skeleton = {
         "label": "hands-skeleton",
         "type": "skeleton",
-        "elements": []
+        "elements": [],
+        "points": []
     }
 
     # Create hands-shoulders-skeleton (shoulders, elbows, wrists + hands)
     hands_shoulders_skeleton = {
         "label": "hands-shoulders-skeleton",
         "type": "skeleton",
-        "elements": []
+        "elements": [],
+        "points": []
     }
 
     # Process Pose results (body + basic hand keypoints)
     if pose_results and pose_results.pose_landmarks:
         pose_landmarks = pose_results.pose_landmarks[0]
 
-        # CVAT skeleton format mapping for pose keypoints
+        # CVAT skeleton format mapping for pose keypoints (corrected MediaPipe indices)
         pose_keypoints = {
             # Face
-            0: "nose", 1: "left_eye", 2: "right_eye", 3: "left_ear", 4: "right_ear",
+            0: "nose", 2: "left_eye", 5: "right_eye", 7: "left_ear", 8: "right_ear",
             # Upper body
-            5: "left_shoulder", 6: "right_shoulder", 7: "left_elbow", 8: "right_elbow",
-            9: "left_wrist", 10: "right_wrist",
+            11: "left_shoulder", 12: "right_shoulder", 13: "left_elbow", 14: "right_elbow",
+            15: "left_wrist", 16: "right_wrist",
             # Lower body
-            11: "left_hip", 12: "right_hip", 13: "left_knee", 14: "right_knee",
-            15: "left_ankle", 16: "right_ankle"
+            23: "left_hip", 24: "right_hip", 25: "left_knee", 26: "right_knee",
+            27: "left_ankle", 28: "right_ankle"
         }
 
-        # Upper body keypoints for hands-shoulders-skeleton (shoulders, elbows, wrists only)
+        # Upper body keypoints for hands-shoulders-skeleton (shoulders, elbows, wrists only - corrected indices)
         upper_body_keypoints = {
-            5: "left_shoulder", 6: "right_shoulder", 7: "left_elbow", 8: "right_elbow",
-            9: "left_wrist", 10: "right_wrist"
+            11: "left_shoulder", 12: "right_shoulder", 13: "left_elbow", 14: "right_elbow",
+            15: "left_wrist", 16: "right_wrist"
         }
 
         # Add pose keypoints (always include all keypoints, even low confidence ones)
@@ -412,7 +481,9 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
                     ]
                 }
                 # Add to person-skeleton (body + hands) and hands-skeleton (hands only)
-                person_skeleton["elements"].append(element)
+                # For person-skeleton, avoid duplicate wrists (use the ones from pose)
+                if keypoint_name not in ["left_wrist", "right_wrist"]:
+                    person_skeleton["elements"].append(element)
                 hands_skeleton["elements"].append(element)
 
                 # Add to hands-shoulders-skeleton (shoulders + hands), but skip wrist since it's already in upper body
@@ -458,43 +529,62 @@ def process_combined_results(pose_results, hands_results, image_height: int, ima
 
     logger.info(f"Detected skeleton with {len([kp for kp in pose_keypoints if not kp['outside']])} visible pose keypoints and {len([kp for kp in hand_keypoints if not kp['outside']])} visible hand keypoints")
 
-    # Return appropriate skeletons based on what was detected
-    # CVAT will match labels by name, so only matching labels in the project will be annotated
+    # Finalize skeletons by setting points to empty list
+    # CVAT backend expects empty points for skeleton type in some versions.
+    for skeleton in [person_skeleton, hands_shoulders_skeleton, hands_skeleton]:
+        skeleton["points"] = []
+
     result_skeletons = []
 
     # Always return person-skeleton if we have body keypoints (with or without hands)
-    if len(pose_keypoints) > 0:
-        logger.info(f"Processed person-skeleton with {len(person_skeleton['elements'])} keypoints")
+    if len(visible_pose_kps) > 0 or len(visible_hand_kps) > 0:
+        logger.info(f"Adding person-skeleton with {len(person_skeleton['elements'])} keypoints")
         result_skeletons.append(person_skeleton)
 
-    # Return hands-shoulders-skeleton if we have upper body keypoints (shoulders, elbows, wrists) and/or hands
-    # This is recommended for egocentric videos
-    # Check if we have any elements in hands-shoulders-skeleton (upper body + hands, excluding wrist from hands)
+    # Return hands-shoulders-skeleton
     if len(hands_shoulders_skeleton["elements"]) > 0:
-        # Count upper body vs hand keypoints for logging
-        upper_body_labels = {"left_shoulder", "right_shoulder", "left_elbow", "right_elbow", "left_wrist", "right_wrist"}
-        upper_body_kps = [elem for elem in hands_shoulders_skeleton["elements"] if elem['label'] in upper_body_labels]
-        hand_kps = [elem for elem in hands_shoulders_skeleton["elements"] if elem['label'] not in upper_body_labels]
-        logger.info(f"Processed hands-shoulders-skeleton with {len(hands_shoulders_skeleton['elements'])} keypoints "
-                   f"({len(upper_body_kps)} upper body, {len(hand_kps)} hand)")
+        logger.info(f"Adding hands-shoulders-skeleton with {len(hands_shoulders_skeleton['elements'])} keypoints")
         result_skeletons.append(hands_shoulders_skeleton)
 
-    # Also return hands-skeleton if we have hand keypoints (even if body is present)
-    # This allows users to choose which label to use in their project
-    if len(hand_keypoints) > 0:
-        logger.info(f"Processed hands-skeleton with {len(hands_skeleton['elements'])} keypoints")
+    # Also return hands-skeleton
+    if len(visible_hand_kps) > 0 and hands_skeleton["elements"] and hands_skeleton["points"] != [0.0, 0.0, 0.0, 0.0]:
+        logger.info(f"Adding hands-skeleton with {len(hands_skeleton['elements'])} keypoints")
         result_skeletons.append(hands_skeleton)
 
     return result_skeletons
+
+def calculate_skeleton_bbox(elements):
+    """Calculate [xtl, ytl, xbr, ybr] bounding box from skeleton elements."""
+    xs = []
+    ys = []
+    for el in elements:
+        # Only use visible elements if possible
+        if not el.get("outside", False) and "points" in el:
+            xs.append(el["points"][0])
+            ys.append(el["points"][1])
+
+    # If no visible elements, use all elements
+    if not xs:
+        for el in elements:
+            if "points" in el:
+                xs.append(el["points"][0])
+                ys.append(el["points"][1])
+
+    if not xs:
+        return [0.0, 0.0, 0.0, 0.0]
+
+    return [float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys))]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle application startup and shutdown."""
     # Startup
-    init_detectors()
     yield
-    # Shutdown (if needed)
-    pass
+    # Shutdown
+    logger.info("Shutting down, closing all sessions...")
+    for session in sessions.values():
+        session.close()
+    sessions.clear()
 
 app = FastAPI(
     title="MediaPipe Pose + Hands Service",
@@ -508,6 +598,48 @@ async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "service": "mediapipe-pose"}
 
+def get_shape_center(shape, width, height):
+    """Calculate centroid of a shape (skeleton or rectangle)."""
+    if not shape:
+        return None
+
+    # Handle list input (e.g. bounding box [xmin, ymin, xmax, ymax])
+    if isinstance(shape, list):
+        if len(shape) == 4:
+            # Assume [xmin, ymin, xmax, ymax]
+            return ((shape[0] + shape[2]) / 2, (shape[1] + shape[3]) / 2)
+        else:
+            logger.warning(f"get_shape_center received list with unexpected length {len(shape)}: {shape}")
+            return None
+
+    if not isinstance(shape, dict):
+        logger.error(f"get_shape_center expected dict or list, got {type(shape)}: {shape}")
+        return None
+
+    points = shape.get("points", [])
+    if not points and "elements" in shape:
+        # Skeleton: aggregate points from elements
+        elements = shape["elements"]
+        if isinstance(elements, list):
+            for elem in elements:
+                if isinstance(elem, dict):
+                    if not elem.get("outside", False):
+                        points.extend(elem.get("points", []))
+                else:
+                    logger.warning(f"Skipping non-dict element in shape: {type(elem)}")
+
+    if not points:
+        return None
+
+    # Points are usually [x, y, x, y...]
+    xs = points[0::2]
+    ys = points[1::2]
+
+    if not xs or not ys:
+        return None
+
+    return (sum(xs) / len(xs), sum(ys) / len(ys))
+
 @app.post("/detect")
 async def detect_pose(
     data: Dict[str, Any]
@@ -519,19 +651,23 @@ async def detect_pose(
         data: JSON object with image and parameters
             - image: Base64 encoded image (required)
             - threshold: Confidence threshold for keypoints (optional, default: 0.3)
+            - frame_number: Frame number for timestamp calculation (optional, default: 0)
+            - tracking_mode: 'image' or 'video' (optional, default: 'image')
 
     Returns:
-        CVAT-compatible skeleton annotations
+        CVAT-compatible skeleton annotations with optional tracking info
     """
     try:
         # Debug logging
-        logger.info(f"Received request data keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+        logger.info(f"Received request with {len(data) if isinstance(data, dict) else 0} keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
 
         # Extract parameters from JSON
         image_b64 = data.get('image')
         threshold = data.get('threshold', 0.05)  # Very low threshold for egocentric videos
+        frame_number = data.get('frame_number', 0)
+        tracking_mode = data.get('tracking_mode', 'image')  # 'image' or 'video'
 
-        logger.info(f"Image provided: {image_b64 is not None}, threshold: {threshold}")
+        logger.info(f"Image provided: {image_b64 is not None}, threshold: {threshold}, frame_number: {frame_number}, tracking_mode: {tracking_mode}")
 
         if not image_b64:
             logger.error("No image provided in request")
@@ -544,8 +680,23 @@ async def detect_pose(
         cv2_image = image_to_cv2(image_data)
         image_height, image_width = cv2_image.shape[:2]
 
-        # Get detectors
-        pose_detector, hands_detector = init_detectors()
+        pose_detector = None
+        hands_detector = None
+
+        # Choose detectors based on mode
+        session_id = None
+        if tracking_mode == 'video':
+            # Use session-based stateful detectors
+            session_key = data.get('job_id') or data.get('task_id')
+            if not session_key:
+                session_key = "default_video_session"
+                logger.warning(f"No job_id or task_id provided for video mode, using: {session_key}")
+
+            session_id = str(session_key)
+            pose_detector, hands_detector = get_session_detectors(session_id)
+        else:
+            # Use global stateless detectors
+            pose_detector, hands_detector = get_image_mode_detectors()
 
         # Create MediaPipe Image object
         # MediaPipe expects RGB format, but cv2_image is BGR
@@ -554,21 +705,33 @@ async def detect_pose(
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2_rgb)
 
         # Process image with both detectors
-        logger.info(f"Processing image: {image_width}x{image_height} (width x height)")
-        logger.info(f"OpenCV shape: {cv2_image.shape} -> height={image_height}, width={image_width}")
+        logger.info(f"Processing image: {image_width}x{image_height} (width x height) in {tracking_mode.upper()} mode")
 
-        # Log sample pixel values to verify image content
-        center_x, center_y = image_width // 2, image_height // 2
-        bottom_right_x, bottom_right_y = image_width - 10, image_height - 10
-        logger.info(f"Image sample pixels - Center: ({center_x}, {center_y}) = {cv2_image[center_y, center_x]}, "
-                   f"Bottom-right: ({bottom_right_x}, {bottom_right_y}) = {cv2_image[bottom_right_y, bottom_right_x]}")
+        hands_results = None
+        pose_results = None
 
-        # For egocentric videos, prioritize hand detection
-        # Run hands detection first (more important for egocentric videos)
-        hands_results = hands_detector.detect(mp_image)
+        if tracking_mode == 'video':
+            # Use detect_for_video for VIDEO mode with timestamp
+            frame_number = data.get('frame_number', 0)
+            timestamp_ms = int(frame_number * 1000 / 30)  # Assuming 30 FPS
 
-        # Run pose detection (may help with arm/wrist positioning)
-        pose_results = pose_detector.detect(mp_image)
+            session = sessions[session_id]
+            if timestamp_ms <= session.last_timestamp:
+                logger.warning(f"Backward jump in timestamp (last: {session.last_timestamp}, current: {timestamp_ms}). Re-initializing detectors.")
+                sessions[session_id].close()
+                del sessions[session_id]
+                pose_detector, hands_detector = get_session_detectors(session_id)
+                session = sessions[session_id]
+                logger.info(f"Re-initialized session {session_id}, pose_detector: {pose_detector is not None}, hands_detector: {hands_detector is not None}")
+
+            session.last_timestamp = timestamp_ms
+
+            hands_results = hands_detector.detect_for_video(mp_image, timestamp_ms)
+            pose_results = pose_detector.detect_for_video(mp_image, timestamp_ms)
+        else:
+            # Use detect for IMAGE mode (no timestamp)
+            hands_results = hands_detector.detect(mp_image)
+            pose_results = pose_detector.detect(mp_image)
 
         # Debug: Log detection results
         pose_detected = pose_results and pose_results.pose_landmarks
@@ -580,13 +743,49 @@ async def detect_pose(
         if hands_detected:
             logger.info(f"Hand landmarks count: {len(hands_results.hand_landmarks)}")
 
-        # Prioritize hands for egocentric videos
+        # Combine results
         prioritized_hands_list = []
         if hands_results and hands_results.hand_landmarks:
             prioritized_hands_list = prioritize_hands(hands_results, image_width, image_height)
 
-        # Combine results
         skeletons = process_combined_results(pose_results, hands_results, image_height, image_width, threshold, prioritized_hands_list)
+
+
+        # Tracker Mode: Filter results if input shapes/states provided
+        input_shapes = data.get('shapes') or data.get('states')
+        if input_shapes and skeletons:
+            # Interactive tracking: User wants to track a SPECIFIC object
+            # We assume the first input shape is the target
+            target_shape = input_shapes[0]
+            target_center = get_shape_center(target_shape, image_width, image_height)
+
+            if target_center:
+                logger.info(f"Filtering {len(skeletons)} detections for target at {target_center}")
+
+                # Find closest detected skeleton
+                best_match = None
+                min_dist = float('inf')
+
+                for i, sk in enumerate(skeletons):
+                    sk_center = get_shape_center(sk, image_width, image_height)
+                    if not sk_center:
+                        continue
+
+                    dist = ((sk_center[0] - target_center[0])**2 + (sk_center[1] - target_center[1])**2)**0.5
+
+                    # Log distance for debug
+                    logger.info(f"Skeleton {i} distance: {dist:.1f}")
+
+                    if dist < min_dist:
+                        min_dist = dist
+                        best_match = sk
+
+                if best_match:
+                    # Return only the best match
+                    skeletons = [best_match]
+                    logger.info(f"Selected match with distance {min_dist:.1f}")
+                else:
+                    skeletons = []
 
         logger.info(f"Detected {len(skeletons)} poses")
         return JSONResponse(content=skeletons)
@@ -610,6 +809,8 @@ async def root():
         "usage": {
             "threshold": "Confidence threshold (0.0-1.0, default: 0.3)",
             "image": "Base64 encoded image string",
+            "frame_number": "Frame number for timestamp calculation (video mode)",
+            "tracking_mode": "'image' or 'video' mode for different detection strategies",
             "image_file": "Direct image file upload (alternative)"
         }
     }
