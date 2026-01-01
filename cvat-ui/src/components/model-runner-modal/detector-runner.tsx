@@ -43,6 +43,7 @@ export interface AnnotateTaskRequestBody {
     cleanup: boolean;
     conv_mask_to_poly: boolean;
     threshold?: number;
+    enable_skeleton_tracking?: boolean;
 }
 
 function convertMappingToServer(mapping: FullMapping): ServerMapping {
@@ -61,6 +62,37 @@ function convertMappingToServer(mapping: FullMapping): ServerMapping {
             },
         }
     ), {});
+}
+
+/**
+ * Determines if skeleton tracking should be enabled for automatic annotation.
+ *
+ * Requirements:
+ * 1. Model must have skeleton labels (type === 'skeleton')
+ * 2. At least one skeleton label must be mapped to a task label
+ * 3. Task must be a video task (frame_step === 1) - validated on backend
+ */
+function shouldEnableSkeletonTracking(
+    model: MLModel | undefined,
+    mapping: FullMapping
+): boolean {
+    if (!model) return false;
+
+    // Check if model has skeleton labels
+    const skeletonLabels = model.labels?.filter(
+        label => label.type === LabelType.SKELETON
+    ) ?? [];
+
+    if (skeletonLabels.length === 0) return false;
+
+    // Check if any skeleton labels are actually mapped
+    const mappedModelLabelNames = new Set(
+        mapping.map(([modelLabel]) => modelLabel.name)
+    );
+
+    return skeletonLabels.some(
+        label => mappedModelLabelNames.has(label.name)
+    );
 }
 
 function DetectorRunner(props: Props): JSX.Element {
@@ -278,6 +310,7 @@ function DetectorRunner(props: Props): JSX.Element {
                                     cleanup,
                                     conv_mask_to_poly: convertMasksToPolygons,
                                     ...(detectorThreshold !== null ? { threshold: detectorThreshold } : {}),
+                                    ...(shouldEnableSkeletonTracking(model, mapping) ? { enable_skeleton_tracking: true } : {}),
                                 };
 
                                 runInference(model, body);

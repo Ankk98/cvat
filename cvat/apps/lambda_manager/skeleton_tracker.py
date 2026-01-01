@@ -19,6 +19,7 @@ Usage:
 import base64
 import json
 import logging
+import time
 from typing import Dict, List, Optional, Tuple, Any
 
 import numpy as np
@@ -58,6 +59,8 @@ class SkeletonTrackBuilder:
         self.db_job = db_job
         self.converter = DetectionResultConverter(db_task)
         self.frame_provider = TaskFrameProvider(db_task)
+        self._last_progress_update = 0.0
+        self._progress_update_interval = 5.0
 
     def _get_frame_set(self) -> List[int]:
         """Get the list of frames to process."""
@@ -121,10 +124,12 @@ class SkeletonTrackBuilder:
                     raw_response = raw_response["shapes"]
 
                 # Convert to CVAT format
+                # Keep all skeletons (even outside ones) for track building
                 annotations = self.converter.convert(
                     conv_mask_to_poly=conv_mask_to_poly,
                     frame=frame,
                     annotations=raw_response,
+                    keep_all_skeletons=True,
                 )
 
                 frame_detections[frame] = annotations
@@ -247,47 +252,43 @@ class SkeletonTrackBuilder:
                 if center is None:
                     continue
 
-                # Try to match with existing tracks from previous frame
-                prev_frame = frame_set[frame_idx - 1] if frame_idx > 0 else None
+                # Try to match with existing tracks from previous frames
                 matched_track_id = None
+                potential_matches = []
 
-                if prev_frame and prev_frame in label_tracks:
-                    # Calculate distances to all existing tracks
-                    potential_matches = []
+                for track_id, track_shapes in label_tracks.items():
+                    if not track_shapes:
+                        continue
 
-                    for track_id, track_shapes in label_tracks.items():
-                        if not track_shapes:
-                            continue
+                    # Get last shape in track
+                    last_frame, last_shape = track_shapes[-1]
 
-                        # Get last shape in track
-                        last_frame, last_shape = track_shapes[-1]
+                    # Check frame gap - only match with recent frames
+                    frame_gap = frame - last_frame
+                    if frame_gap <= 0 or frame_gap > 20:  # Must be forward in time, not too far
+                        continue
 
-                        # Check frame gap
-                        frame_gap = frame - last_frame
-                        if frame_gap > 20:  # Too far apart
-                            continue
+                    # Calculate center distance
+                    last_center = self._get_skeleton_center(last_shape)
+                    if last_center is None:
+                        continue
 
-                        # Calculate center distance
-                        last_center = self._get_skeleton_center(last_shape)
-                        if last_center is None:
-                            continue
+                    distance = np.sqrt(
+                        (center[0] - last_center[0])**2 +
+                        (center[1] - last_center[1])**2
+                    )
 
-                        distance = np.sqrt(
-                            (center[0] - last_center[0])**2 +
-                            (center[1] - last_center[1])**2
-                        )
+                    # Accept if distance is small enough
+                    # Use adaptive threshold based on frame gap
+                    effective_threshold = max_distance * (1.0 / (1.0 + frame_gap * 0.1))
 
-                        # Accept if distance is small enough
-                        # Use adaptive threshold based on frame gap
-                        effective_threshold = max_distance * (1.0 / (1.0 + frame_gap * 0.1))
+                    if distance < effective_threshold:
+                        potential_matches.append((track_id, distance))
 
-                        if distance < effective_threshold:
-                            potential_matches.append((track_id, distance))
-
-                    # Choose best match (shortest distance)
-                    if potential_matches:
-                        potential_matches.sort(key=lambda x: x[1])
-                        matched_track_id = potential_matches[0][0]
+                # Choose best match (shortest distance)
+                if potential_matches:
+                    potential_matches.sort(key=lambda x: x[1])
+                    matched_track_id = potential_matches[0][0]
 
                 if matched_track_id is None:
                     # Create new track
@@ -340,8 +341,6 @@ class SkeletonTrackBuilder:
 
         return tuple(center)
 
-        return tuple(center)
-
     def _calculate_skeleton_bbox(self, elements: List[dict]) -> List[float]:
         """Calculate [xtl, ytl, xbr, ybr] bounding box from skeleton elements."""
         xs = []
@@ -367,6 +366,8 @@ class SkeletonTrackBuilder:
     def _convert_tracks_to_cvat_format(self, raw_tracks: List[dict]) -> List[dict]:
         """
         Convert internal track format to CVAT SkeletonTrack format.
+
+        CVAT skeleton tracks use track-level elements (sub-tracks), not shape-level elements.
         """
         cvat_tracks = []
 
@@ -377,7 +378,10 @@ class SkeletonTrackBuilder:
             # Sort by frame
             frame_shapes.sort(key=lambda x: x[0])
 
-            # Build track
+            if not frame_shapes:
+                continue
+
+            # Build main track
             track = {
                 "label_id": label_id,
                 "frame": frame_shapes[0][0],
@@ -387,43 +391,59 @@ class SkeletonTrackBuilder:
                 "attributes": [],
             }
 
-            # Add skeleton shapes for each frame
+            # Build elements (sub-tracks) from the shapes
+            # Group all elements by their label_id
+            elements_by_label = {}  # {label_id: [(frame, element_data), ...]}
+
             for frame, shape in frame_shapes:
                 elements = shape.get("elements", [])
-                bbox = self._calculate_skeleton_bbox(elements)
+                for element in elements:
+                    element_label_id = element.get("label_id")
+                    if element_label_id not in elements_by_label:
+                        elements_by_label[element_label_id] = []
+                    elements_by_label[element_label_id].append((frame, element))
 
-                shape_copy = {
+            # Convert to element sub-tracks
+            track["elements"] = []
+            for element_label_id, frame_element_list in elements_by_label.items():
+                # Sort by frame
+                frame_element_list.sort(key=lambda x: x[0])
+
+                # Build element sub-track
+                element_track = {
+                    "frame": frame_element_list[0][0],
+                    "group": None,
+                    "source": str(SourceType.AUTO),
+                    "shapes": [],
+                    "attributes": [],
+                    "label_id": element_label_id,
+                }
+
+                # Add shapes for each frame
+                for frame, element in frame_element_list:
+                    element_track["shapes"].append({
+                        "frame": frame,
+                        "type": element.get("type", "points"),
+                        "occluded": element.get("occluded", False),
+                        "outside": element.get("outside", False),
+                        "z_order": element.get("z_order", 0),
+                        "rotation": element.get("rotation", 0),
+                        "points": element.get("points", []),
+                        "attributes": [],
+                    })
+
+                track["elements"].append(element_track)
+
+            # Add skeleton shapes for each frame
+            for frame, shape in frame_shapes:
+                track["shapes"].append({
                     "frame": frame,
                     "label_id": label_id,
                     "type": "skeleton",
                     "occluded": False,
-                    "outside": False,
-                    "points": [], # CVAT backend expects empty points for skeletons
-                    "z_order": 0,
-                    "elements": elements,
-                    "source": "auto",
-                    "attributes": [],
-                    "group": None,
-                }
-                track["shapes"].append(shape_copy)
-
-            # Add final outside shape if needed
-            last_frame = frame_shapes[-1][0]
-            frame_set = self._get_frame_set()
-            if last_frame < frame_set[-1]:
-                last_shape = frame_shapes[-1][1]
-                last_elements = last_shape.get("elements", [])
-                last_bbox = self._calculate_skeleton_bbox(last_elements)
-
-                track["shapes"].append({
-                    "frame": last_frame + 1,
-                    "label_id": label_id,
-                    "type": "skeleton",
-                    "occluded": False,
-                    "outside": True,
+                    "outside": shape.get("outside", False),
                     "points": [],
                     "z_order": 0,
-                    "elements": last_elements,
                     "source": "auto",
                     "attributes": [],
                     "group": None,
@@ -439,13 +459,17 @@ class SkeletonTrackBuilder:
         return base64.b64encode(image.data.getvalue()).decode("utf-8")
 
     def _update_progress(self, progress: float):
-        """Update RQ job progress."""
-        from rq import get_current_job
-        job = get_current_job()
-        if job:
-            rq_job_meta = LambdaRQMeta.for_job(job)
-            rq_job_meta.progress = int(progress * 100)
-            rq_job_meta.save()
+        """Update RQ job progress with throttling."""
+        current_time = time.time()
+        # Update if enough time has passed or if progress is 0 or 1.0 (start/end)
+        if (current_time - self._last_progress_update) >= self._progress_update_interval or progress in (0.0, 1.0):
+            from rq import get_current_job
+            job = get_current_job()
+            if job:
+                rq_job_meta = LambdaRQMeta.for_job(job)
+                rq_job_meta.progress = int(progress * 100)
+                rq_job_meta.save()
+            self._last_progress_update = current_time
 
     def build_and_submit_tracks(
         self,
@@ -455,49 +479,90 @@ class SkeletonTrackBuilder:
         conv_mask_to_poly: bool,
         max_distance: float = 150.0,
     ) -> None:
-        """
-        Main method: build skeleton tracks and submit to CVAT.
-        """
+        """Main method: build skeleton tracks and submit to CVAT with error handling."""
         slogger.glob.info(f"Starting skeleton track building for task {self.db_task.id}")
 
-        # Step 1: Get frame set
-        frame_set = self._get_frame_set()
-        if not frame_set:
-            slogger.glob.info("No frames to process")
-            return
+        frame_detections = None
+        raw_tracks = None
+        cvat_tracks = None
 
-        # Step 2: Run detections on all frames
-        frame_detections = self._run_detections(
-            function, frame_set, threshold, mapping, conv_mask_to_poly
-        )
+        try:
+            # Step 1: Get frame set
+            frame_set = self._get_frame_set()
+            if not frame_set:
+                slogger.glob.info("No frames to process")
+                return
 
-        # Step 3: Get seed tracks from existing annotations (if any)
-        seed_tracks = self._get_seed_tracks(frame_set[0]) if frame_set else {}
-        if seed_tracks:
-            slogger.glob.info(f"Found {sum(len(v) for v in seed_tracks.values())} seed skeletons in frame {frame_set[0]}")
+            # Step 2: Run detections on all frames (with per-frame error handling)
+            self._update_progress(0.0)
+            frame_detections = self._run_detections(
+                function, frame_set, threshold, mapping, conv_mask_to_poly
+            )
 
-        # Step 4: Associate detections into tracks
-        raw_tracks = self._associate_detections(frame_detections, max_distance, seed_tracks)
+            if not frame_detections or not any(frame_detections.values()):
+                slogger.glob.warning("No detections found in any frame")
+                return
 
-        if not raw_tracks:
-            slogger.glob.info("No tracks created")
-            return
+            # Step 3: Get seed tracks from existing annotations (if any)
+            seed_tracks = self._get_seed_tracks(frame_set[0]) if frame_set else {}
+            if seed_tracks:
+                slogger.glob.info(f"Found {sum(len(v) for v in seed_tracks.values())} seed skeletons")
 
-        # Step 4: Convert to CVAT format
-        cvat_tracks = self._convert_tracks_to_cvat_format(raw_tracks)
+            # Step 4: Associate detections into tracks
+            self._update_progress(0.5)
+            raw_tracks = self._associate_detections(frame_detections, max_distance, seed_tracks)
 
-        # Step 5: Submit to CVAT
-        data = {
-            "tracks": cvat_tracks,
-            "shapes": [],
-            "tags": [],
-        }
+            if not raw_tracks:
+                slogger.glob.info("No tracks created from detections")
+                return
 
-        serializer = LabeledDataSerializer(data=data)
-        if serializer.is_valid(raise_exception=True):
-            if self.db_job:
-                dm_task.put_job_data(self.db_job.id, serializer.data)
-            else:
-                dm_task.put_task_data(self.db_task.id, serializer.data)
+            # Step 5: Convert to CVAT format
+            self._update_progress(0.75)
+            cvat_tracks = self._convert_tracks_to_cvat_format(raw_tracks)
 
-        slogger.glob.info(f"Successfully submitted {len(cvat_tracks)} skeleton tracks to CVAT")
+            if not cvat_tracks:
+                slogger.glob.warning("No tracks converted to CVAT format")
+                return
+
+            # Step 6: Submit to CVAT
+            self._update_progress(0.90)
+            data = {
+                "tracks": cvat_tracks,
+                "shapes": [],
+                "tags": [],
+            }
+
+            serializer = LabeledDataSerializer(data=data)
+            if serializer.is_valid(raise_exception=True):
+                if self.db_job:
+                    dm_task.put_job_data(self.db_job.id, serializer.data)
+                else:
+                    dm_task.put_task_data(self.db_task.id, serializer.data)
+
+            self._update_progress(1.0)
+            slogger.glob.info(f"Successfully submitted {len(cvat_tracks)} skeleton tracks to CVAT")
+
+        except Exception as e:
+            # Log error with full context
+            slogger.glob.error(
+                f"Skeleton tracking failed for task {self.db_task.id}: {e}",
+                exc_info=True
+            )
+
+            # Try to save partial results if we have tracks
+            if cvat_tracks and len(cvat_tracks) > 0:
+                try:
+                    slogger.glob.info(f"Attempting to save {len(cvat_tracks)} partial tracks")
+                    data = {"tracks": cvat_tracks, "shapes": [], "tags": []}
+                    serializer = LabeledDataSerializer(data=data)
+                    if serializer.is_valid(raise_exception=True):
+                        if self.db_job:
+                            dm_task.put_job_data(self.db_job.id, serializer.data)
+                        else:
+                            dm_task.put_task_data(self.db_task.id, serializer.data)
+                    slogger.glob.info("Partial tracks saved successfully")
+                except Exception as save_error:
+                    slogger.glob.error(f"Failed to save partial tracks: {save_error}")
+
+            # Re-raise to mark RQ job as failed
+            raise

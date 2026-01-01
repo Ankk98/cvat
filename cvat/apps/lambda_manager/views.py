@@ -12,7 +12,7 @@ import textwrap
 from copy import deepcopy
 from datetime import timedelta
 from functools import wraps
-from typing import Any, Optional
+from typing import Any, Optional, Tuple, Dict
 
 import datumaro.util.mask_tools as mask_tools
 import django_rq
@@ -836,12 +836,13 @@ class DetectionResultConverter:
                 labels[label.name]["attributes"][attr["name"]] = attr["id"]
         return labels
 
-    def convert(self, *, conv_mask_to_poly: bool, frame: int, annotations: list) -> dict:
+    def convert(self, *, conv_mask_to_poly: bool, frame: int, annotations: list, keep_all_skeletons: bool = False) -> dict:
         data = {"tags": [], "shapes": []}
 
         for anno in annotations:
             if parsed := self._parse_anno(
-                labels=self._labels, conv_mask_to_poly=conv_mask_to_poly, frame=frame, anno=anno
+                labels=self._labels, conv_mask_to_poly=conv_mask_to_poly, frame=frame, anno=anno,
+                keep_all_skeletons=keep_all_skeletons
             ):
                 if anno["type"].lower() == "tag":
                     data["tags"].append(parsed)
@@ -853,7 +854,7 @@ class DetectionResultConverter:
         return serializer.validated_data
 
     def _parse_anno(
-        self, *, labels: dict, conv_mask_to_poly: bool, frame: int, anno: dict
+        self, *, labels: dict, conv_mask_to_poly: bool, frame: int, anno: dict, keep_all_skeletons: bool = False
     ) -> Optional[dict]:
         label = labels.get(anno["label"])
         if label is None:
@@ -915,6 +916,7 @@ class DetectionResultConverter:
                         conv_mask_to_poly=conv_mask_to_poly,
                         frame=frame,
                         anno=x,
+                        keep_all_skeletons=keep_all_skeletons,
                     )
                     for x in anno["elements"]
                 ]
@@ -949,7 +951,8 @@ class DetectionResultConverter:
                         }
 
                 shape["elements"] = list(map(_map, label["sublabels"].values()))
-                if all(element["outside"] for element in shape["elements"]):
+                # Only filter out if not keeping all skeletons (for track building)
+                if not keep_all_skeletons and all(element["outside"] for element in shape["elements"]):
                     return None
 
             return shape
@@ -987,6 +990,46 @@ class DetectionResultCollector:
         s.is_valid(raise_exception=True)
 
         self._data = s.validated_data
+
+
+def validate_skeleton_tracking_request(
+    function: LambdaFunction,
+    mapping: Optional[Dict],
+    db_task: Task
+) -> Tuple[bool, Optional[str]]:
+    """
+    Validate skeleton tracking request.
+
+    Returns:
+        (is_valid, error_message)
+    """
+    # Check if task is video (frame_step must be 1)
+    if db_task.data.get_frame_step() != 1:
+        return False, "Skeleton tracking only works for video tasks (frame_step=1)"
+
+    # Check if model has skeleton labels
+    labels = function.labels if isinstance(function.labels, list) else []
+    skeleton_labels = [
+        label for label in labels
+        if (isinstance(label, dict) and label.get("type") == "skeleton") or
+           (hasattr(label, "type") and getattr(label, "type", None) == "skeleton")
+    ]
+
+    if not skeleton_labels:
+        return False, "Model does not have skeleton labels"
+
+    # Check if skeleton labels are mapped
+    if mapping:
+        mapped_label_names = set(mapping.keys())
+        skeleton_label_names = {
+            label.get("name") if isinstance(label, dict) else getattr(label, "name", None)
+            for label in skeleton_labels
+        }
+
+        if not skeleton_label_names.intersection(mapped_label_names):
+            return False, "No skeleton labels are mapped to task labels"
+
+    return True, None
 
 
 class LambdaJob:
@@ -1259,8 +1302,19 @@ class LambdaJob:
                 assert False
 
         if function.kind == FunctionKind.DETECTOR:
-            # Check if skeleton tracking is enabled
-            if kwargs.get("enable_skeleton_tracking"):
+            enable_skeleton_tracking = kwargs.get("enable_skeleton_tracking", False)
+
+            # Validate skeleton tracking request if enabled
+            if enable_skeleton_tracking:
+                is_valid, error_msg = validate_skeleton_tracking_request(
+                    function, kwargs.get("mapping"), db_task
+                )
+                if not is_valid:
+                    slogger.glob.warning(f"Skeleton tracking validation failed: {error_msg}")
+                    # Fall back to standard detection
+                    enable_skeleton_tracking = False
+
+            if enable_skeleton_tracking:
                 # Use skeleton track builder for video tracking
                 from cvat.apps.lambda_manager.skeleton_tracker import SkeletonTrackBuilder
                 builder = SkeletonTrackBuilder(db_task, db_job)
