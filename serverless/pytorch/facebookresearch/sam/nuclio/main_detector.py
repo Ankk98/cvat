@@ -23,10 +23,18 @@ def handler(context, event):
         image = Image.open(buf)
         image = image.convert("RGB")
 
-        # Generate automatic masks
-        masks = context.user_data.model.handle(image)
+        # Extract filtering parameters
+        # threshold: from CVAT UI (user can adjust)
+        # max_masks: limit number of masks to avoid too many false positives (default: 30)
+        # min_area: filter out very small masks (default: 1000 pixels)
+        threshold = float(data.get("threshold", 0.5))  # Confidence threshold from UI
+        max_masks = int(data.get("max_masks", 30))  # Maximum number of masks (top N by confidence)
+        min_area = int(data.get("min_area", 1000))  # Minimum mask area in pixels
 
-        context.logger.info(f"Generated {len(masks)} automatic masks")
+        # Generate automatic masks with filtering
+        masks = context.user_data.model.handle(image, threshold=threshold, max_masks=max_masks, min_area=min_area)
+
+        context.logger.info(f"Generated {len(masks)} automatic masks (after filtering)")
 
         return context.Response(
             body=json.dumps(masks),

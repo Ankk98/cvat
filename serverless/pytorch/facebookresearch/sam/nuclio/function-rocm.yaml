@@ -5,7 +5,8 @@ metadata:
     name: Segment Anything (ROCm)
     version: 2
     type: interactor
-    spec:
+    version: 2
+    spec: ""
     min_pos_points: 0
     min_neg_points: 0
     startswith_box_optional: true

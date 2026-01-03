@@ -10,8 +10,9 @@
 #
 # Options:
 #   --all           Deploy all available egocentric models (default)
-#   --sam           Deploy SAM for interactive segmentation only
-#   --sam-auto      Deploy SAM Auto for automatic segmentation only
+#   --sam           Deploy SAM interactor for interactive segmentation only
+#   --sam-auto      Deploy SAM Auto detector for automatic segmentation only
+#   --sam-tracker   Deploy SAM tracker for tracking masks/polygons across frames
 #   --detectron2    Deploy Detectron2 RetinaNet for object detection only
 #   --mask-rcnn     Deploy Detectron2 Mask R-CNN for instance segmentation only
 #   --mmpose        Deploy MMPose for hand pose estimation only
@@ -27,7 +28,8 @@
 #
 # Examples:
 #   ./deploy_egocentric_models.sh                    # Deploy all models with ROCm
-#   ./deploy_egocentric_models.sh --sam --cpu       # Deploy only SAM on CPU
+#   ./deploy_egocentric_models.sh --sam --cpu       # Deploy only SAM interactor on CPU
+#   ./deploy_egocentric_models.sh --sam-tracker      # Deploy only SAM tracker
 #   ./deploy_egocentric_models.sh --toolbox --toolbox-name my-toolbox
 
 set -euo pipefail
@@ -38,6 +40,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 DEPLOY_ALL=true
 DEPLOY_SAM=false
 DEPLOY_SAM_AUTO=false
+DEPLOY_SAM_TRACKER=false
 DEPLOY_DETECTRON2=false
 DEPLOY_MASK_RCNN=false
 DEPLOY_MMPOSE=false
@@ -82,8 +85,9 @@ USAGE:
 
 OPTIONS:
     --all                   Deploy all available egocentric models (default)
-    --sam                   Deploy SAM for interactive segmentation only
-    --sam-auto              Deploy SAM Auto for automatic segmentation only
+    --sam                   Deploy SAM interactor for interactive segmentation only
+    --sam-auto              Deploy SAM Auto detector for automatic segmentation only
+    --sam-tracker           Deploy SAM tracker for tracking masks/polygons across frames
     --detectron2            Deploy Detectron2 RetinaNet for object detection only
     --mask-rcnn             Deploy Detectron2 Mask R-CNN for instance segmentation only
     --mmpose                Deploy MMPose for hand pose estimation only
@@ -101,7 +105,8 @@ ENVIRONMENT VARIABLES:
 
 EXAMPLES:
     $0                              # Deploy all models with ROCm
-    $0 --sam --cpu                  # Deploy only SAM on CPU
+    $0 --sam --cpu                  # Deploy only SAM interactor on CPU
+    $0 --sam-tracker                # Deploy only SAM tracker
     $0 --toolbox --toolbox-name my-toolbox
     $0 --mmpose --detectron2        # Deploy specific models
     $0 --mediapipe                  # Deploy MediaPipe (automatically manages service and Nuclio function)
@@ -131,6 +136,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --sam-auto)
             DEPLOY_SAM_AUTO=true
+            DEPLOY_ALL=false
+            shift
+            ;;
+        --sam-tracker)
+            DEPLOY_SAM_TRACKER=true
             DEPLOY_ALL=false
             shift
             ;;
@@ -212,6 +222,8 @@ deploy_cpu_model() {
 
     # Find the correct function config file
     local func_config=""
+    local temp_config=""
+    local needs_cleanup=false
 
     if [[ -n "$custom_config_name" ]]; then
         if [[ -f "$path/$custom_config_name" ]]; then
@@ -237,6 +249,20 @@ deploy_cpu_model() {
 
     log_info "Using function config: $func_config"
 
+    # If config has "rocm" in the function name, create a temporary CPU version
+    if grep -qE "name:.*rocm" "$func_config" 2>/dev/null; then
+        temp_config="${func_config}.cpu.tmp"
+        log_info "Creating CPU version of config (removing 'rocm' from function name)..."
+        # Remove -rocm suffix from function names (e.g., pth-facebookresearch-sam-vit-h-rocm -> pth-facebookresearch-sam-vit-h)
+        # Only match the name: line to avoid changing other occurrences
+        sed -E 's/^([[:space:]]*name:[[:space:]]*)(.*)-rocm([[:space:]]*)$/\1\2\3/g' "$func_config" > "$temp_config"
+        # Also update annotations that mention ROCm to CPU
+        sed -i 's/ROCm/CPU/g; s/(ROCm)/(CPU)/g' "$temp_config"
+        func_config="$temp_config"
+        needs_cleanup=true
+        log_info "Created temporary CPU config: $temp_config"
+    fi
+
     # Build custom base image if Dockerfile exists
     if [[ -f "$path/Dockerfile" ]]; then
         local image_tag="cvat.$(basename "$(dirname "$path")").$(basename "$path").cpu"
@@ -251,6 +277,8 @@ deploy_cpu_model() {
     # Container name 'mediapipe-pose' is accessible from any container on cvat_cvat network
     local mediapipe_url="${MEDIAPIPE_SERVICE_URL:-http://mediapipe-pose:8000}"
 
+    # Deploy using nuctl
+    local deploy_result=0
     nuctl deploy --project-name cvat \
         --path "$path" \
         --file "$func_config" \
@@ -258,7 +286,14 @@ deploy_cpu_model() {
         --env CVAT_FUNCTIONS_REDIS_HOST=cvat_redis_ondisk \
         --env CVAT_FUNCTIONS_REDIS_PORT=6666 \
         --env MEDIAPIPE_SERVICE_URL="$mediapipe_url" \
-        --platform-config '{"attributes": {"network": "cvat_cvat"}}'
+        --platform-config '{"attributes": {"network": "cvat_cvat"}}' || deploy_result=$?
+
+    # Cleanup temp file if created
+    if [[ "$needs_cleanup" = true && -f "$temp_config" ]]; then
+        rm -f "$temp_config"
+    fi
+
+    return $deploy_result
 }
 
 # MediaPipe service management functions
@@ -450,7 +485,7 @@ deploy_model() {
         # Run CPU deployment in subshell to prevent script exit on failure
         if (
             set +e  # Disable exit on error for this subshell
-            deploy_cpu_model "$path" "$label"
+            deploy_cpu_model "$path" "$label" "$custom_config"
             exit_code=$?
             exit $exit_code
         ); then
@@ -461,24 +496,49 @@ deploy_model() {
         fi
     else
         # ROCm deployment
-        local actual_args=("${EXTRA_ARGS[@]}")
-        if [[ "$USE_TOOLBOX" != true && ! -f "$path/nuclio/function-rocm.yaml" && -f "$path/nuclio/function-gpu.yaml" ]]; then
-            # Use ROCm deployer with GPU fallback for GPU-only configs
-            actual_args+=("--env" "INCLUDE_GPU_FALLBACK=1")
-            log_info "Using GPU fallback for $label (ROCm config not available)"
-        fi
-
-        # Run ROCm deployment in subshell to prevent script exit on failure
-        if (
-            set +e  # Disable exit on error for this subshell
-            "$DEPLOYER" "$path" "${actual_args[@]}"
-            exit_code=$?
-            exit $exit_code
-        ); then
-            log_success "Successfully deployed $label"
+        # If custom config is specified, use nuctl directly (deploy_rocm_host.sh only handles function-rocm.yaml)
+        if [[ -n "$custom_config" ]]; then
+            log_info "Using direct nuctl deployment for custom config: $custom_config"
+            if (
+                set +e  # Disable exit on error for this subshell
+                # Use nuclio directory as path so build context includes all Python files
+                # Use full paths like deploy_rocm_host.sh does
+                nuctl deploy --project-name cvat \
+                    --path "$path/nuclio" \
+                    --file "$config_file" \
+                    --platform local \
+                    --env CVAT_FUNCTIONS_REDIS_HOST=cvat_redis_ondisk \
+                    --env CVAT_FUNCTIONS_REDIS_PORT=6666 \
+                    --platform-config '{"attributes": {"network": "cvat_cvat"}}'
+                exit_code=$?
+                exit $exit_code
+            ); then
+                log_success "Successfully deployed $label"
+            else
+                log_error "Failed to deploy $label"
+                return 1
+            fi
         else
-            log_error "Failed to deploy $label"
-            return 1
+            # Use deployer script for standard function-rocm.yaml files
+            local actual_args=("${EXTRA_ARGS[@]}")
+            if [[ "$USE_TOOLBOX" != true && ! -f "$path/nuclio/function-rocm.yaml" && -f "$path/nuclio/function-gpu.yaml" ]]; then
+                # Use ROCm deployer with GPU fallback for GPU-only configs
+                actual_args+=("--env" "INCLUDE_GPU_FALLBACK=1")
+                log_info "Using GPU fallback for $label (ROCm config not available)"
+            fi
+
+            # Run ROCm deployment in subshell to prevent script exit on failure
+            if (
+                set +e  # Disable exit on error for this subshell
+                "$DEPLOYER" "$path" "${actual_args[@]}" 2>&1
+                exit_code=$?
+                exit $exit_code
+            ); then
+                log_success "Successfully deployed $label"
+            else
+                log_error "Failed to deploy $label"
+                return 1
+            fi
         fi
     fi
 }
@@ -491,6 +551,8 @@ log_info "ROCm acceleration: $( [[ "$USE_ROCM" = true ]] && echo "enabled" || ec
 # Determine which models to deploy
 if [[ "$DEPLOY_ALL" = true ]]; then
     DEPLOY_SAM=true
+    DEPLOY_SAM_AUTO=true
+    DEPLOY_SAM_TRACKER=true
     DEPLOY_DETECTRON2=true
     DEPLOY_MASK_RCNN=true
     DEPLOY_MMPOSE=true
@@ -504,7 +566,9 @@ if [[ "$STOP_SERVICES" = true ]]; then
     # Hard-coded list of egocentric-related Nuclio functions to stop
     EGOCENTRIC_FUNCTIONS=(
         "pth-facebookresearch-sam-vit-h"
-        "pth-facebookresearch-sam-auto"
+        "pth-facebookresearch-sam-vit-h-rocm"
+        "pth-facebookresearch-sam-auto-rocm"
+        "pth-facebookresearch-sam-vit-h-rocm-tracker"
         "pth-facebookresearch-detectron2-retinanet-r101-rocm"
         "pth-facebookresearch-detectron2-mask-rcnn-r50-rocm"
         "pth-mmpose-hrnet32"
@@ -675,7 +739,8 @@ log_info "Starting individual model deployments..."
 # SAM - Interactive Segmentation
 if [[ "$DEPLOY_SAM" = true ]]; then
     log_info "Processing SAM deployment..."
-    if deploy_model "SAM (Interactive Segmentation)" "$SCRIPT_DIR/pytorch/facebookresearch/sam" "ROCm"; then
+    sam_deployment_type="$([[ "$USE_ROCM" = true ]] && echo "ROCm" || echo "CPU")"
+    if deploy_model "SAM (Interactive Segmentation)" "$SCRIPT_DIR/pytorch/facebookresearch/sam" "$sam_deployment_type"; then
         ((deployed_count++))
         log_info "SAM deployment completed successfully"
     else
@@ -688,7 +753,8 @@ fi
 # SAM Auto - Automatic Segmentation
 if [[ "$DEPLOY_SAM_AUTO" = true ]]; then
     log_info "Processing SAM Auto deployment..."
-    if deploy_model "SAM Auto (Automatic Segmentation)" "$SCRIPT_DIR/pytorch/facebookresearch/sam" "ROCm" "function-detector.yaml"; then
+    sam_auto_deployment_type="$([[ "$USE_ROCM" = true ]] && echo "ROCm" || echo "CPU")"
+    if deploy_model "SAM Auto (Automatic Segmentation)" "$SCRIPT_DIR/pytorch/facebookresearch/sam" "$sam_auto_deployment_type" "function-detector.yaml"; then
         ((deployed_count++))
         log_info "SAM Auto deployment completed successfully"
     else
@@ -696,6 +762,20 @@ if [[ "$DEPLOY_SAM_AUTO" = true ]]; then
         log_error "SAM Auto deployment failed"
     fi
     log_info "SAM Auto processing block completed, moving to next model..."
+fi
+
+# SAM Tracker - Track masks/polygons across frames
+if [[ "$DEPLOY_SAM_TRACKER" = true ]]; then
+    log_info "Processing SAM Tracker deployment..."
+    sam_tracker_deployment_type="$([[ "$USE_ROCM" = true ]] && echo "ROCm" || echo "CPU")"
+    if deploy_model "SAM Tracker (Mask/Polygon Tracking)" "$SCRIPT_DIR/pytorch/facebookresearch/sam" "$sam_tracker_deployment_type" "function-tracker.yaml"; then
+        ((deployed_count++))
+        log_info "SAM Tracker deployment completed successfully"
+    else
+        ((failed_count++))
+        log_error "SAM Tracker deployment failed"
+    fi
+    log_info "SAM Tracker processing block completed, moving to next model..."
 fi
 
 # Detectron2 RetinaNet - Object Detection
