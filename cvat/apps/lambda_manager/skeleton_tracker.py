@@ -363,13 +363,18 @@ class SkeletonTrackBuilder:
 
         return [min(xs), min(ys), max(xs), max(ys)]
 
-    def _convert_tracks_to_cvat_format(self, raw_tracks: List[dict]) -> List[dict]:
+    def _convert_tracks_to_cvat_format(self, raw_tracks: List[dict], frame_set: List[int]) -> List[dict]:
         """
         Convert internal track format to CVAT SkeletonTrack format.
 
         CVAT skeleton tracks use track-level elements (sub-tracks), not shape-level elements.
+
+        Args:
+            raw_tracks: List of track data from _associate_detections
+            frame_set: List of all frame numbers in the task/job (used to determine track termination)
         """
         cvat_tracks = []
+        last_frame = frame_set[-1] if frame_set else None
 
         for track_data in raw_tracks:
             label_id = track_data["label_id"]
@@ -432,6 +437,24 @@ class SkeletonTrackBuilder:
                         "attributes": [],
                     })
 
+                # Add final shape with outside=True if element track doesn't end at last frame
+                # This is critical for proper track termination - without this, tracks that end
+                # before the last frame will appear as "outside" on all subsequent frames
+                if element_track["shapes"] and last_frame is not None:
+                    last_element_frame, last_element_shape = frame_element_list[-1]
+                    if last_element_frame < last_frame:
+                        # Add outside marker at next frame to properly terminate the track
+                        element_track["shapes"].append({
+                            "frame": last_element_frame + 1,
+                            "type": last_element_shape.get("type", "points"),
+                            "occluded": False,
+                            "outside": True,
+                            "z_order": last_element_shape.get("z_order", 0),
+                            "rotation": last_element_shape.get("rotation", 0),
+                            "points": last_element_shape.get("points", []),
+                            "attributes": [],
+                        })
+
                 track["elements"].append(element_track)
 
             # Add skeleton shapes for each frame
@@ -448,6 +471,26 @@ class SkeletonTrackBuilder:
                     "attributes": [],
                     "group": None,
                 })
+
+            # Add final shape with outside=True if track doesn't end at last frame
+            # This is critical for proper track termination - without this, tracks that end
+            # before the last frame will appear as "outside" on all subsequent frames
+            if track["shapes"] and last_frame is not None:
+                last_track_frame = frame_shapes[-1][0]
+                if last_track_frame < last_frame:
+                    # Add outside marker at next frame to properly terminate the track
+                    track["shapes"].append({
+                        "frame": last_track_frame + 1,
+                        "label_id": label_id,
+                        "type": "skeleton",
+                        "occluded": False,
+                        "outside": True,
+                        "points": [],
+                        "z_order": 0,
+                        "source": "auto",
+                        "attributes": [],
+                        "group": None,
+                    })
 
             cvat_tracks.append(track)
 
@@ -518,7 +561,7 @@ class SkeletonTrackBuilder:
 
             # Step 5: Convert to CVAT format
             self._update_progress(0.75)
-            cvat_tracks = self._convert_tracks_to_cvat_format(raw_tracks)
+            cvat_tracks = self._convert_tracks_to_cvat_format(raw_tracks, frame_set)
 
             if not cvat_tracks:
                 slogger.glob.warning("No tracks converted to CVAT format")

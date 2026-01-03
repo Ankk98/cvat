@@ -134,19 +134,47 @@ def test_skeleton_tracking(
             print(f"Using function: {function.get('id')} (kind: {function_kind})")
             print(f"Note: Skeleton tracking uses DETECTOR function. Tracker functions are for interactive tracking only.")
 
-        # Get task labels from /api/labels endpoint
+        # Get task labels - handle pagination properly
         task_labels = []
-        labels_response = session.get(f"{cvat_url}/api/labels", params={"task_id": task_id})
-        if labels_response.status_code == 200:
+
+        # First, try to get labels from task data directly
+        if "labels" in task_data and isinstance(task_data["labels"], list):
+            task_labels = task_data["labels"]
+            print(f"Found {len(task_labels)} labels in task data")
+
+        # Also try /api/labels endpoint with pagination support
+        page = 1
+        while True:
+            labels_response = session.get(f"{cvat_url}/api/labels", params={"task_id": task_id, "page": page})
+            if labels_response.status_code != 200:
+                if page == 1:
+                    print(f"⚠️  Warning: Failed to fetch labels from /api/labels: {labels_response.status_code}")
+                break
+
             labels_data = labels_response.json()
             if isinstance(labels_data, dict):
-                task_labels = labels_data.get("results", [])
-            elif isinstance(labels_data, list):
-                task_labels = labels_data
-        else:
-            print(f"⚠️  Warning: Failed to fetch labels from /api/labels: {labels_response.status_code}")
+                # Handle pagination
+                api_labels = labels_data.get("results", [])
+                # Merge with task labels (avoid duplicates)
+                existing_ids = {tl.get("id") for tl in task_labels if isinstance(tl, dict)}
+                for label in api_labels:
+                    if isinstance(label, dict) and label.get("id") not in existing_ids:
+                        task_labels.append(label)
 
-        print(f"Task has {len(task_labels)} labels")
+                # Check if there's a next page
+                if not labels_data.get("next"):
+                    break
+            elif isinstance(labels_data, list):
+                # No pagination, just a list
+                existing_ids = {tl.get("id") for tl in task_labels if isinstance(tl, dict)}
+                for label in labels_data:
+                    if isinstance(label, dict) and label.get("id") not in existing_ids:
+                        task_labels.append(label)
+                break
+
+            page += 1
+
+        print(f"Task has {len(task_labels)} labels total (checked {page} page(s))")
 
         # Validate task_labels format
         if not isinstance(task_labels, list):
@@ -169,25 +197,35 @@ def test_skeleton_tracking(
             except:
                 function_labels = []
 
-        # Show available labels for debugging
-        func_label_names = []
-        for func_label in function_labels:
-            if isinstance(func_label, dict):
-                func_label_name = func_label.get("name", "")
-            else:
-                func_label_name = str(func_label)
-            func_label_names.append(func_label_name)
+        # Extract function label names
+        function_label_names = []
+        if isinstance(function_labels, list):
+            for fl in function_labels:
+                if isinstance(fl, dict):
+                    function_label_names.append(fl.get("name", ""))
+                elif isinstance(fl, str):
+                    function_label_names.append(fl)
 
-        # Handle task_labels - could be dicts or strings
+        # Extract task label names and types
         task_label_names = []
+        task_label_types = {}
         for tl in task_labels:
             if isinstance(tl, dict):
-                task_label_names.append(tl.get("name", ""))
+                label_name = tl.get("name", "")
+                label_type = tl.get("type", "")
+                task_label_names.append(label_name)
+                task_label_types[label_name] = label_type
             else:
                 task_label_names.append(str(tl))
 
-        print(f"Function labels: {func_label_names}")
+        print(f"Function labels: {function_label_names}")
         print(f"Task labels: {task_label_names}")
+
+        # Check if task has skeleton labels
+        has_skeleton_labels = any(
+            isinstance(tl, dict) and tl.get("type") == "skeleton"
+            for tl in task_labels
+        )
 
         for func_label in function_labels:
             if isinstance(func_label, dict):
@@ -222,9 +260,17 @@ def test_skeleton_tracking(
             print("⚠️  WARNING: No label mappings found in request.")
             print("   Note: Backend will attempt auto-mapping if label names match exactly.")
             print("   If labels don't match, detections may be filtered out.")
-            print(f"   Function expects: {func_label_names}")
+            print(f"   Function expects: {function_label_names}")
             print(f"   Task has: {task_label_names}")
-            print("   ⚠️  CRITICAL: Task may not have skeleton labels! Tracks may show as 'unknown' label.")
+
+            if not has_skeleton_labels:
+                print("   ⚠️  CRITICAL: Task does not have skeleton labels!")
+                print("   Tracks will show as 'unknown' label because there's no skeleton label to map to.")
+                print("   SOLUTION: Add a skeleton label to the task (e.g., 'hands-shoulders-skeleton')")
+                print("   with the same name as one of the function labels, or configure label mapping.")
+            else:
+                print("   ⚠️  WARNING: Task has skeleton labels but no mapping was created.")
+                print("   This may indicate a label name mismatch. Tracks may show as 'unknown' label.")
 
         # Get initial annotation count
         print("Fetching initial annotations...")
@@ -768,13 +814,19 @@ def test_skeleton_tracking(
                     if _cached_annotations is None:
                         # Get job ID if available (for job-specific annotations)
                         job_id = None
-                        jobs_data = task_data.get("jobs", [])
-                        if jobs_data:
-                            # jobs can be a list of IDs or list of objects
-                            if isinstance(jobs_data[0], dict):
-                                job_id = jobs_data[0].get("id")
-                            elif isinstance(jobs_data[0], (int, str)):
-                                job_id = jobs_data[0]
+                        try:
+                            # Access task_data from outer scope
+                            jobs_data = task_data.get("jobs", [])
+                            if jobs_data and isinstance(jobs_data, list) and len(jobs_data) > 0:
+                                # jobs can be a list of IDs or list of objects
+                                if isinstance(jobs_data[0], dict):
+                                    job_id = jobs_data[0].get("id")
+                                elif isinstance(jobs_data[0], (int, str)):
+                                    job_id = jobs_data[0]
+                        except (NameError, AttributeError, KeyError, IndexError, TypeError) as e:
+                            # task_data not accessible or jobs_data has wrong format
+                            # Just use task_id instead
+                            pass
 
                         # Query annotations API - this returns what UI would show
                         if job_id:
@@ -783,15 +835,24 @@ def test_skeleton_tracking(
                             ann_response = session.get(f"{cvat_url}/api/tasks/{task_id}/annotations")
 
                         if ann_response.status_code != 200:
+                            # Log the error for debugging
+                            print(f"      ⚠️  API query failed: {ann_response.status_code} - {ann_response.text[:100]}")
                             return None
 
                         _cached_annotations = ann_response.json()
+
+                    if not _cached_annotations:
+                        return None
 
                     ann_data = _cached_annotations
                     # Count tracks and shapes visible on this frame
                     tracks_on_frame = []
                     track_shapes_on_frame = []
                     element_shapes_on_frame = []
+
+                    # Ensure ann_data is a dict
+                    if not isinstance(ann_data, dict):
+                        return None
 
                     for track in ann_data.get("tracks", []):
                         track_shapes = track.get("shapes", [])
@@ -806,14 +867,19 @@ def test_skeleton_tracking(
 
                         # For skeleton tracks, also check elements (sub-tracks)
                         # Elements are what UI shows as separate objects
+                        # NOTE: Each element is a sub-track, so we count each element once if it has a visible shape
                         if track_visible:
                             elements = track.get("elements", [])
                             for element in elements:
                                 elem_shapes = element.get("shapes", [])
+                                # Check if this element has a visible shape on this frame
+                                element_visible = False
                                 for shape in elem_shapes:
                                     if shape.get("frame") == frame_num and not shape.get("outside", False):
-                                        # Element is visible on this frame
+                                        # Element is visible on this frame - count it once
                                         element_shapes_on_frame.append(shape)
+                                        element_visible = True
+                                        break  # Found shape for this element, move to next element
 
                     # Also check standalone shapes
                     standalone_shapes = []
@@ -834,7 +900,8 @@ def test_skeleton_tracking(
                         "track_ids": [t.get("id") for t in tracks_on_frame],
                     }
                 except Exception as e:
-                    # Silently return None - we'll handle missing data gracefully
+                    # Log the error for debugging
+                    print(f"      ⚠️  Exception querying API for frame {frame_num}: {type(e).__name__}: {str(e)[:100]}")
                     return None
 
             # Analyze a few key frames (start, middle, end, and any suspicious frames)
@@ -891,6 +958,33 @@ def test_skeleton_tracking(
                             api_standalone = api_data.get("standalone_shapes", 0)
                             api_total = api_data.get("total_visible", 0)
 
+                            # For skeleton tracks:
+                            # - API returns: 1 track shape + N element shapes = N+1 total
+                            # - UI might show: Only the track (1) OR track + elements (N+1)
+                            # - User reports seeing 8 on frame 225, but API shows 25 (1 track + 24 elements)
+                            # - This suggests UI might be filtering elements or counting differently
+                            #   Possible reasons:
+                            #   1. UI only shows keyframe elements (but we found 0 keyframes on frame 225)
+                            #   2. UI filters elements by some criteria (label type, visibility, etc.)
+                            #   3. UI groups elements differently
+                            #   4. UI counts only main tracks, not elements (but that would be 1, not 8)
+
+                            # Special debug for frame 225 if user reported discrepancy
+                            if frame == 225 and api_total != 8:
+                                print(f"\n  🔍 DEBUG Frame 225:")
+                                print(f"     API query shows: {api_total} total visible objects")
+                                print(f"       - Track shapes: {api_track_shapes}")
+                                print(f"       - Element shapes: {api_element_shapes}")
+                                print(f"       - Standalone shapes: {api_standalone}")
+                                print(f"     Track structure count: {count_from_tracks} (main track shapes only)")
+                                if api_total == 27:
+                                    print(f"     ⚠️  DISCREPANCY: User reports UI shows 8, but API shows {api_total}")
+                                    print(f"     This suggests the UI may be:")
+                                    print(f"       - Filtering elements (showing only 7 of 26 elements + 1 track = 8)")
+                                    print(f"       - Grouping elements differently")
+                                    print(f"       - Counting only keyframe elements or specific label types")
+                                    print(f"     NOTE: The API returns all visible elements, but UI may filter them for display")
+
                             # For skeleton tracks, UI shows: track shape + element shapes
                             # So total visible = track_shapes + element_shapes
                             status = "✓" if api_total <= 2 else "⚠️" if api_total <= 4 else "✗"
@@ -904,9 +998,19 @@ def test_skeleton_tracking(
                                 print(f"         - Element shapes: {api_element_shapes}")
                                 print(f"         - Standalone shapes: {api_standalone}")
                                 if api_total > count_from_tracks:
-                                    print(f"      ⚠️  DISCREPANCY: UI shows {api_total} objects but track structure has {count_from_tracks} detections")
-                                    print(f"      This is expected for skeleton tracks - elements (sub-tracks) are rendered separately in UI")
-                                    print(f"      Expected: ~{count_from_tracks} track shape(s) + element shapes = {api_total} total visible")
+                                    # For skeleton tracks, this is expected - elements are rendered separately
+                                    # Calculate expected range
+                                    expected_min = count_from_tracks  # At least the track itself
+                                    # Reasonable upper bound: track + up to 50 elements per track
+                                    expected_max = count_from_tracks * 51  # Very generous upper bound
+
+                                    if api_total > expected_max:
+                                        print(f"      ⚠️  LARGE DISCREPANCY: UI shows {api_total} objects but track structure has {count_from_tracks} detections")
+                                        print(f"      This might indicate multiple tracks or counting issues")
+                                    else:
+                                        print(f"      ℹ️  UI shows {api_total} objects (track + elements), track structure has {count_from_tracks} main track(s)")
+                                        print(f"      This is expected for skeleton tracks - elements (sub-tracks) are rendered separately in UI")
+                                        print(f"      Breakdown: {api_track_shapes} track shape(s) + {api_element_shapes} element shape(s) = {api_total} total")
                             else:
                                 print(f"  {status} Frame {frame}: {count_from_tracks} detection(s) from {len(track_ids)} track(s)")
                                 print(f"      (UI shows {api_total} visible objects: {api_track_shapes} track + {api_element_shapes} elements)")

@@ -252,8 +252,27 @@ export default class Collection {
 
             try {
                 const stateData = object.get(frame);
-                if (stateData.outside && !stateData.keyframe && !allTracks && object instanceof Track) {
-                    continue;
+                // For skeleton tracks, outside is determined by elements, not the track shape
+                // The stateData.outside already reflects this (computed in SkeletonTrack.get())
+                if (object instanceof Track) {
+                    // For skeleton tracks, visibility is determined by elements, not track shape
+                    if (object instanceof SkeletonTrack) {
+                        // SkeletonTrack.get() sets outside=true if ALL elements are outside
+                        // and keyframe based on whether track shape or elements have keyframes
+                        // We should filter out tracks where all elements are outside
+                        // UNLESS allTracks is true (user setting to show all interpolation tracks)
+                        if (stateData.outside && !allTracks) {
+                            // If all elements are outside, hide the track regardless of keyframe status
+                            // This is because a track with all elements outside is not visible on this frame
+                            continue;
+                        }
+                    } else {
+                        // Regular tracks: standard filtering
+                        // Show track if: NOT outside OR has keyframe OR allTracks is true
+                        if (stateData.outside && !stateData.keyframe && !allTracks) {
+                            continue;
+                        }
+                    }
                 }
                 visible.push(stateData);
             } catch (error: unknown) {
