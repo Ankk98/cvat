@@ -134,6 +134,9 @@ function DetectorRunner(props: Props): JSX.Element {
          [LabelType.ANY, LabelType.MASK].includes(model?.returnType || LabelType.ANY));
     // Skeleton tracking is available if model has skeleton labels and at least one is mapped
     const skeletonTrackingVisible = isDetector && shouldEnableSkeletonTracking(model, mapping);
+    // Hide the old generic "Enable tracking" toggle when specific tracking modes are available
+    // This prevents confusion - users should use skeleton tracking or polygon tracking instead
+    const enableTrackingVisible = isDetector && !skeletonTrackingVisible && !polygonTrackingVisible;
 
     const buttonEnabled = model && (isReId || (isDetector && mapping.length));
 
@@ -239,7 +242,7 @@ function DetectorRunner(props: Props): JSX.Element {
                     <Text>Clean previous annotations</Text>
                 </div>
             )}
-            {isDetector && (
+            {enableTrackingVisible && (
                 <div className='cvat-detector-runner-enable-tracking-wrapper'>
                     <Switch
                         checked={enableTracking}
@@ -358,7 +361,8 @@ function DetectorRunner(props: Props): JSX.Element {
                                     conv_mask_to_poly: convertMasksToPolygons,
                                     ...(detectorThreshold !== null ? { threshold: detectorThreshold } : {}),
                                     ...(enableSkeletonTracking ? { enable_skeleton_tracking: true } : {}),
-                                    ...(enableTracking ? { enable_tracking: true } : {}),
+                                    // Only send enable_tracking if the old toggle is visible (not hidden by specific tracking modes)
+                                    ...(enableTrackingVisible && enableTracking ? { enable_tracking: true } : {}),
                                     ...(enablePolygonTracking ? { enable_polygon_tracking: true } : {}),
                                 };
 
