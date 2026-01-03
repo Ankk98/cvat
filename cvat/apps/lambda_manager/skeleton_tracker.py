@@ -578,9 +578,9 @@ class SkeletonTrackBuilder:
             serializer = LabeledDataSerializer(data=data)
             if serializer.is_valid(raise_exception=True):
                 if self.db_job:
-                    dm_task.put_job_data(self.db_job.id, serializer.data)
+                    dm_task.patch_job_data(self.db_job.id, serializer.data, PatchAction.CREATE)
                 else:
-                    dm_task.put_task_data(self.db_task.id, serializer.data)
+                    dm_task.patch_task_data(self.db_task.id, serializer.data, PatchAction.CREATE)
 
             self._update_progress(1.0)
             slogger.glob.info(f"Successfully submitted {len(cvat_tracks)} skeleton tracks to CVAT")
@@ -600,9 +600,9 @@ class SkeletonTrackBuilder:
                     serializer = LabeledDataSerializer(data=data)
                     if serializer.is_valid(raise_exception=True):
                         if self.db_job:
-                            dm_task.put_job_data(self.db_job.id, serializer.data)
+                            dm_task.patch_job_data(self.db_job.id, serializer.data, PatchAction.CREATE)
                         else:
-                            dm_task.put_task_data(self.db_task.id, serializer.data)
+                            dm_task.patch_task_data(self.db_task.id, serializer.data, PatchAction.CREATE)
                     slogger.glob.info("Partial tracks saved successfully")
                 except Exception as save_error:
                     slogger.glob.error(f"Failed to save partial tracks: {save_error}")

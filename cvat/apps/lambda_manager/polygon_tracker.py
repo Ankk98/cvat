@@ -624,9 +624,9 @@ class PolygonTrackBuilder:
             serializer = LabeledDataSerializer(data=data)
             if serializer.is_valid(raise_exception=True):
                 if self.db_job:
-                    dm_task.put_job_data(self.db_job.id, serializer.data)
+                    dm_task.patch_job_data(self.db_job.id, serializer.data, PatchAction.CREATE)
                 else:
-                    dm_task.put_task_data(self.db_task.id, serializer.data)
+                    dm_task.patch_task_data(self.db_task.id, serializer.data, PatchAction.CREATE)
                 slogger.glob.info(f"Successfully submitted {len(cvat_tracks)} polygon tracks to CVAT")
             else:
                 slogger.glob.error(f"Serializer validation failed: {serializer.errors}")
