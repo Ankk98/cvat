@@ -19,6 +19,7 @@ import django_rq
 import numpy as np
 import requests
 import rq
+import cv2
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.signing import BadSignature, TimestampSigner
@@ -836,6 +837,80 @@ class DetectionResultConverter:
                 labels[label.name]["attributes"][attr["name"]] = attr["id"]
         return labels
 
+    @staticmethod
+    def _mask_to_polygon(mask_points: list) -> Optional[list]:
+        """
+        Convert mask points (flattened pixels format) to polygon points.
+
+        Mask format: [pixel1, pixel2, ..., x_min, y_min, x_max, y_max]
+        Polygon format: [x1, y1, x2, y2, x3, y3, ...] (at least 6 points, even number)
+
+        Returns None if conversion fails (empty mask, too few points, etc.)
+        """
+        if len(mask_points) < 6:
+            # Need at least 2 pixels + 4 bbox coordinates
+            return None
+
+        try:
+            # Extract bounding box (last 4 values)
+            x_min, y_min, x_max, y_max = [int(x) for x in mask_points[-4:]]
+
+            # Extract flattened pixel data
+            pixel_data = mask_points[:-4]
+
+            # Calculate tight mask dimensions
+            tight_width = x_max - x_min + 1
+            tight_height = y_max - y_min + 1
+
+            if len(pixel_data) != tight_width * tight_height:
+                # Invalid mask format
+                return None
+
+            # Reshape to 2D mask array
+            tight_mask = np.array(pixel_data, dtype=np.uint8).reshape((tight_height, tight_width))
+
+            # Convert to binary mask (0 or 255) for cv2.findContours
+            binary_mask = (tight_mask > 0).astype(np.uint8) * 255
+
+            # Find contours
+            # cv2.findContours returns (contours, hierarchy) in OpenCV 4.x
+            # or (image, contours, hierarchy) in OpenCV 3.x
+            contours_result = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if int(cv2.__version__.split('.')[0]) >= 4:
+                contours = contours_result[0]
+            else:
+                contours = contours_result[1]
+
+            if len(contours) == 0:
+                # No contours found (empty mask)
+                return None
+
+            # Get the largest contour
+            largest_contour = max(contours, key=lambda arr: arr.size)
+
+            # Simplify contour using approxPolyDP (optional, reduces points)
+            epsilon = 2.5  # Approximation accuracy
+            approx_contour = cv2.approxPolyDP(largest_contour, epsilon, closed=True)
+
+            # Convert to flat list format [x1, y1, x2, y2, ...]
+            # Adjust coordinates to full image coordinates (add bbox offset)
+            polygon_points = []
+            for point in approx_contour:
+                x = int(point[0][0]) + x_min
+                y = int(point[0][1]) + y_min
+                polygon_points.extend([x, y])
+
+            # Validate: polygon needs at least 6 points (3 coordinate pairs) and even number
+            if len(polygon_points) < 6 or len(polygon_points) % 2 != 0:
+                return None
+
+            return polygon_points
+
+        except (ValueError, IndexError, TypeError) as e:
+            # Handle any conversion errors gracefully
+            slogger.glob.warning(f"Failed to convert mask to polygon: {e}")
+            return None
+
     def convert(self, *, conv_mask_to_poly: bool, frame: int, annotations: list, keep_all_skeletons: bool = False) -> dict:
         data = {"tags": [], "shapes": []}
 
@@ -894,9 +969,17 @@ class DetectionResultConverter:
             if shape["type"] in ("rectangle", "ellipse"):
                 shape["rotation"] = anno.get("rotation", 0)
 
-            if anno["type"] == "mask" and "points" in anno and conv_mask_to_poly:
-                shape["type"] = "polygon"
-                shape["points"] = anno["points"]
+            if anno["type"] == "mask" and conv_mask_to_poly:
+                # Convert mask to polygon
+                polygon_points = self._mask_to_polygon(shape["points"])
+                if polygon_points is not None:
+                    shape["type"] = "polygon"
+                    shape["points"] = polygon_points
+                else:
+                    slogger.glob.warning(f"Failed to convert mask to polygon: {shape['points']}")
+                    # Conversion failed (empty mask, invalid format, etc.)
+                    # Skip this annotation by returning None
+                    return None
             elif anno["type"] == "mask":
                 [xtl, ytl, xbr, ybr] = shape["points"][-4:]
                 cut_points = shape["points"][:-4]
