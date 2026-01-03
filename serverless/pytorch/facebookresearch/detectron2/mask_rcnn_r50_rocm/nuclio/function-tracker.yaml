@@ -1,0 +1,135 @@
+metadata:
+  name: pth-facebookresearch-detectron2-mask-rcnn-r50-rocm-tracker
+  namespace: cvat
+  annotations:
+    name: Mask R-CNN R50 Tracker (ROCm) - Instance Segmentation Tracking
+    version: "1"
+    type: tracker
+    framework: pytorch
+    description: Track instance segmentation masks across video frames using Mask R-CNN
+    spec: |
+      [
+        { "id": 1, "name": "person", "type": "polygon" },
+        { "id": 2, "name": "bicycle", "type": "polygon" },
+        { "id": 3, "name": "car", "type": "polygon" },
+        { "id": 4, "name": "motorcycle", "type": "polygon" },
+        { "id": 5, "name": "airplane", "type": "polygon" },
+        { "id": 6, "name": "bus", "type": "polygon" },
+        { "id": 7, "name": "train", "type": "polygon" },
+        { "id": 8, "name": "truck", "type": "polygon" },
+        { "id": 9, "name": "boat", "type": "polygon" },
+        { "id":10, "name": "traffic_light", "type": "polygon" },
+        { "id":11, "name": "fire_hydrant", "type": "polygon" },
+        { "id":13, "name": "stop_sign", "type": "polygon" },
+        { "id":14, "name": "parking_meter", "type": "polygon" },
+        { "id":15, "name": "bench", "type": "polygon" },
+        { "id":16, "name": "bird", "type": "polygon" },
+        { "id":17, "name": "cat", "type": "polygon" },
+        { "id":18, "name": "dog", "type": "polygon" },
+        { "id":19, "name": "horse", "type": "polygon" },
+        { "id":20, "name": "sheep", "type": "polygon" },
+        { "id":21, "name": "cow", "type": "polygon" },
+        { "id":22, "name": "elephant", "type": "polygon" },
+        { "id":23, "name": "bear", "type": "polygon" },
+        { "id":24, "name": "zebra", "type": "polygon" },
+        { "id":25, "name": "giraffe", "type": "polygon" },
+        { "id":27, "name": "backpack", "type": "polygon" },
+        { "id":28, "name": "umbrella", "type": "polygon" },
+        { "id":31, "name": "handbag", "type": "polygon" },
+        { "id":32, "name": "tie", "type": "polygon" },
+        { "id":33, "name": "suitcase", "type": "polygon" },
+        { "id":34, "name": "frisbee", "type": "polygon" },
+        { "id":35, "name": "skis", "type": "polygon" },
+        { "id":36, "name": "snowboard", "type": "polygon" },
+        { "id":37, "name": "sports_ball", "type": "polygon" },
+        { "id":38, "name": "kite", "type": "polygon" },
+        { "id":39, "name": "baseball_bat", "type": "polygon" },
+        { "id":40, "name": "baseball_glove", "type": "polygon" },
+        { "id":41, "name": "skateboard", "type": "polygon" },
+        { "id":42, "name": "surfboard", "type": "polygon" },
+        { "id":43, "name": "tennis_racket", "type": "polygon" },
+        { "id":44, "name": "bottle", "type": "polygon" },
+        { "id":46, "name": "wine_glass", "type": "polygon" },
+        { "id":47, "name": "cup", "type": "polygon" },
+        { "id":48, "name": "fork", "type": "polygon" },
+        { "id":49, "name": "knife", "type": "polygon" },
+        { "id":50, "name": "spoon", "type": "polygon" },
+        { "id":51, "name": "bowl", "type": "polygon" },
+        { "id":52, "name": "banana", "type": "polygon" },
+        { "id":53, "name": "apple", "type": "polygon" },
+        { "id":54, "name": "sandwich", "type": "polygon" },
+        { "id":55, "name": "orange", "type": "polygon" },
+        { "id":56, "name": "broccoli", "type": "polygon" },
+        { "id":57, "name": "carrot", "type": "polygon" },
+        { "id":58, "name": "hot_dog", "type": "polygon" },
+        { "id":59, "name": "pizza", "type": "polygon" },
+        { "id":60, "name": "donut", "type": "polygon" },
+        { "id":61, "name": "cake", "type": "polygon" },
+        { "id":62, "name": "chair", "type": "polygon" },
+        { "id":63, "name": "couch", "type": "polygon" },
+        { "id":64, "name": "potted_plant", "type": "polygon" },
+        { "id":65, "name": "bed", "type": "polygon" },
+        { "id":67, "name": "dining_table", "type": "polygon" },
+        { "id":70, "name": "toilet", "type": "polygon" },
+        { "id":72, "name": "tv", "type": "polygon" },
+        { "id":73, "name": "laptop", "type": "polygon" },
+        { "id":74, "name": "mouse", "type": "polygon" },
+        { "id":75, "name": "remote", "type": "polygon" },
+        { "id":76, "name": "keyboard", "type": "polygon" },
+        { "id":77, "name": "cell_phone", "type": "polygon" },
+        { "id":78, "name": "microwave", "type": "polygon" },
+        { "id":79, "name": "oven", "type": "polygon" },
+        { "id":80, "name": "toaster", "type": "polygon" },
+        { "id":81, "name": "sink", "type": "polygon" },
+        { "id":83, "name": "refrigerator", "type": "polygon" },
+        { "id":84, "name": "book", "type": "polygon" },
+        { "id":85, "name": "clock", "type": "polygon" },
+        { "id":86, "name": "vase", "type": "polygon" },
+        { "id":87, "name": "scissors", "type": "polygon" },
+        { "id":88, "name": "teddy_bear", "type": "polygon" },
+        { "id":89, "name": "hair_drier", "type": "polygon" },
+        { "id":90, "name": "toothbrush", "type": "polygon" }
+      ]
+    supported_shape_types: "polygon"
+spec:
+  description: Mask R-CNN R50 Tracker from Detectron2 optimized for ROCm GPUs - Instance Segmentation Tracking
+  runtime: python:3.10
+  handler: main_tracker:handler
+  eventTimeout: 60s
+  build:
+    image: cvat.pth.facebookresearch.detectron2.mask_rcnn_r50_rocm.tracker:latest-rocm
+    baseImage: docker.io/rocm/pytorch:rocm7.1_ubuntu22.04_py3.10_pytorch_release_2.6.0
+    directives:
+      preCopy:
+        - kind: ENV
+          value: DEBIAN_FRONTEND=noninteractive
+        - kind: RUN
+          value: apt-get update && apt-get -y install curl git python3 python3-pip &&
+            rm -rf /var/lib/apt/lists/*
+        - kind: WORKDIR
+          value: /opt/nuclio
+        - kind: RUN
+          value: pip3 install --upgrade pip
+        - kind: RUN
+          value: pip3 install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --extra-index-url
+            https://download.pytorch.org/whl/rocm7.1
+        - kind: RUN
+          value: pip3 install --no-build-isolation 'git+https://github.com/facebookresearch/detectron2@ff53992b1985'
+        - kind: RUN
+          value: pip3 install opencv-python-headless
+  triggers:
+    myHttpTrigger:
+      numWorkers: 1
+      kind: http
+      workerAvailabilityTimeoutMilliseconds: 10000
+      attributes:
+        maxRequestBodySize: 33554432
+  resources:
+    limits:
+      amd.com/gpu: 1
+  platform:
+    attributes:
+      restartPolicy:
+        name: always
+        maximumRetryCount: 3
+      mountMode: volume

@@ -15,6 +15,7 @@
 #   --sam-tracker   Deploy SAM tracker for tracking masks/polygons across frames
 #   --detectron2    Deploy Detectron2 RetinaNet for object detection only
 #   --mask-rcnn     Deploy Detectron2 Mask R-CNN for instance segmentation only
+#   --mask-rcnn-tracker Deploy Detectron2 Mask R-CNN tracker for tracking polygons across frames
 #   --mmpose        Deploy MMPose for hand pose estimation only
 #   --cpu           Use CPU deployment instead of ROCm (for models without ROCm support)
 #   --toolbox       Use toolbox deployment instead of host deployment
@@ -43,6 +44,7 @@ DEPLOY_SAM_AUTO=false
 DEPLOY_SAM_TRACKER=false
 DEPLOY_DETECTRON2=false
 DEPLOY_MASK_RCNN=false
+DEPLOY_MASK_RCNN_TRACKER=false
 DEPLOY_MMPOSE=false
 DEPLOY_MEDIAPIPE=false
 STOP_SERVICES=false
@@ -90,6 +92,7 @@ OPTIONS:
     --sam-tracker           Deploy SAM tracker for tracking masks/polygons across frames
     --detectron2            Deploy Detectron2 RetinaNet for object detection only
     --mask-rcnn             Deploy Detectron2 Mask R-CNN for instance segmentation only
+    --mask-rcnn-tracker     Deploy Detectron2 Mask R-CNN tracker for tracking polygons across frames
     --mmpose                Deploy MMPose for hand pose estimation only
     --mediapipe             Deploy MediaPipe pose + hands detection (automatically manages service and Nuclio function)
     --stop                  Stop deployed services (Nuclio functions and MediaPipe service)
@@ -107,6 +110,7 @@ EXAMPLES:
     $0                              # Deploy all models with ROCm
     $0 --sam --cpu                  # Deploy only SAM interactor on CPU
     $0 --sam-tracker                # Deploy only SAM tracker
+    $0 --mask-rcnn-tracker          # Deploy only Mask R-CNN tracker
     $0 --toolbox --toolbox-name my-toolbox
     $0 --mmpose --detectron2        # Deploy specific models
     $0 --mediapipe                  # Deploy MediaPipe (automatically manages service and Nuclio function)
@@ -151,6 +155,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --mask-rcnn)
             DEPLOY_MASK_RCNN=true
+            DEPLOY_ALL=false
+            shift
+            ;;
+        --mask-rcnn-tracker)
+            DEPLOY_MASK_RCNN_TRACKER=true
             DEPLOY_ALL=false
             shift
             ;;
@@ -555,6 +564,7 @@ if [[ "$DEPLOY_ALL" = true ]]; then
     DEPLOY_SAM_TRACKER=true
     DEPLOY_DETECTRON2=true
     DEPLOY_MASK_RCNN=true
+    DEPLOY_MASK_RCNN_TRACKER=true
     DEPLOY_MMPOSE=true
     DEPLOY_MEDIAPIPE=true
 fi
@@ -571,6 +581,7 @@ if [[ "$STOP_SERVICES" = true ]]; then
         "pth-facebookresearch-sam-vit-h-rocm-tracker"
         "pth-facebookresearch-detectron2-retinanet-r101-rocm"
         "pth-facebookresearch-detectron2-mask-rcnn-r50-rocm"
+        "pth-facebookresearch-detectron2-mask-rcnn-r50-rocm-tracker"
         "pth-mmpose-hrnet32"
         "pth-google-mediapipe-pose-hands"
         "pth-google-mediapipe-pose-hands-tracker"
@@ -799,6 +810,18 @@ if [[ "$DEPLOY_MASK_RCNN" = true ]]; then
     else
         ((failed_count++))
         log_error "Detectron2 Mask R-CNN deployment failed"
+    fi
+fi
+
+# Detectron2 Mask R-CNN Tracker - Polygon Tracking
+if [[ "$DEPLOY_MASK_RCNN_TRACKER" = true ]]; then
+    log_info "Processing Detectron2 Mask R-CNN Tracker deployment..."
+    if deploy_model "Detectron2 Mask R-CNN R50 Tracker (Polygon Tracking)" "$SCRIPT_DIR/pytorch/facebookresearch/detectron2/mask_rcnn_r50_rocm" "ROCm" "function-tracker.yaml"; then
+        ((deployed_count++))
+        log_info "Detectron2 Mask R-CNN Tracker deployment completed successfully"
+    else
+        ((failed_count++))
+        log_error "Detectron2 Mask R-CNN Tracker deployment failed"
     fi
 fi
 

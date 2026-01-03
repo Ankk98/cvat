@@ -161,11 +161,13 @@ class LambdaGateway:
         else:
             url = f"http://localhost:{func.port}"
 
+        slogger.glob.info(f"[LAMBDA_GATEWAY] Invoking function {func.id} (kind: {func.kind}) at URL: {url}")
         with make_requests_session() as session:
             reply = session.post(url, timeout=NUCLIO_TIMEOUT, json=payload)
             reply.raise_for_status()
             response = reply.json()
 
+        slogger.glob.info(f"[LAMBDA_GATEWAY] Function {func.id} responded successfully")
         return response
 
 
@@ -590,7 +592,10 @@ class LambdaFunction:
         if is_interactive and request:
             interactive_function_call_signal.send(sender=self, request=request)
 
+        # Log which function is being invoked (for debugging routing)
+        slogger.glob.info(f"[LAMBDA_INVOKE] Invoking function: {self.id} (kind: {self.kind}, port: {self.port})")
         response = self.gateway.invoke(self, payload)
+        slogger.glob.info(f"[LAMBDA_INVOKE] Function {self.id} returned response type: {type(response)}")
 
         def check_attr_value(value, db_attr):
             if db_attr is None:
@@ -745,6 +750,7 @@ class LambdaQueue:
         *,
         job: Optional[int] = None,
         enable_skeleton_tracking: bool = False,
+        enable_polygon_tracking: bool = False,
         frame_number: Optional[int] = None,
     ) -> LambdaJob:
         queue = self._get_queue()
@@ -794,6 +800,9 @@ class LambdaQueue:
                 # Add skeleton tracking flag if enabled
                 if enable_skeleton_tracking:
                     job_kwargs["enable_skeleton_tracking"] = True
+                # Add polygon tracking flag if enabled
+                if enable_polygon_tracking:
+                    job_kwargs["enable_polygon_tracking"] = True
                 if frame_number is not None:
                     job_kwargs["frame_number"] = frame_number
 
@@ -1386,6 +1395,7 @@ class LambdaJob:
 
         if function.kind == FunctionKind.DETECTOR:
             enable_skeleton_tracking = kwargs.get("enable_skeleton_tracking", False)
+            enable_polygon_tracking = kwargs.get("enable_polygon_tracking", False)
 
             # Validate skeleton tracking request if enabled
             if enable_skeleton_tracking:
@@ -1397,6 +1407,13 @@ class LambdaJob:
                     # Fall back to standard detection
                     enable_skeleton_tracking = False
 
+            # Validate polygon tracking request if enabled
+            if enable_polygon_tracking:
+                # Check if task is video (frame_step must be 1)
+                if db_task.data.get_frame_step() != 1:
+                    slogger.glob.warning("Polygon tracking only works for video tasks (frame_step=1)")
+                    enable_polygon_tracking = False
+
             if enable_skeleton_tracking:
                 # Use skeleton track builder for video tracking
                 from cvat.apps.lambda_manager.skeleton_tracker import SkeletonTrackBuilder
@@ -1407,6 +1424,19 @@ class LambdaJob:
                     kwargs.get("mapping"),
                     kwargs.get("conv_mask_to_poly"),
                     kwargs.get("max_distance") or 150.0,
+                )
+            elif enable_polygon_tracking:
+                # Use polygon track builder for mask/polygon tracking
+                from cvat.apps.lambda_manager.polygon_tracker import PolygonTrackBuilder
+                builder = PolygonTrackBuilder(db_task, db_job)
+                builder.build_and_submit_tracks(
+                    function,
+                    kwargs.get("threshold"),
+                    kwargs.get("mapping"),
+                    kwargs.get("conv_mask_to_poly"),
+                    kwargs.get("max_distance") or 150.0,
+                    kwargs.get("iou_threshold") or 0.3,
+                    kwargs.get("max_frame_gap") or 5,
                 )
             else:
                 # Use standard detector (frame-by-frame)
@@ -1649,6 +1679,8 @@ class RequestViewSet(viewsets.ViewSet):
             max_distance = request_data.get("max_distance")
             # New parameters for skeleton tracking
             enable_skeleton_tracking = request_data.get("enable_skeleton_tracking", False)
+            # New parameter for polygon tracking
+            enable_polygon_tracking = request_data.get("enable_polygon_tracking", False)
             frame_number = request_data.get("frame_number")
         except KeyError as err:
             raise ValidationError(
@@ -1671,6 +1703,7 @@ class RequestViewSet(viewsets.ViewSet):
             request,
             job=job,
             enable_skeleton_tracking=enable_skeleton_tracking,
+            enable_polygon_tracking=enable_polygon_tracking,
             frame_number=frame_number,
         )
 

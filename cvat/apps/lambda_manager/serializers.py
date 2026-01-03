@@ -53,6 +53,11 @@ class FunctionCallRequestSerializer(serializers.Serializer):
         default=False,
         help_text="Enable server-side skeleton tracking for video sequences (uses MediaPipe VIDEO mode)",
     )
+    enable_polygon_tracking = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Enable server-side polygon tracking for mask/polygon annotations across video frames",
+    )
     frame_number = serializers.IntegerField(
         required=False,
         help_text="Frame number for timestamp calculation in video mode",

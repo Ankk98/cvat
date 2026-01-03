@@ -89,3 +89,5 @@ nuctl*
 
 # Temporary documentation
 tmp-docs/
+
+.bash_history

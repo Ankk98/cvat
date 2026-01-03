@@ -44,6 +44,8 @@ export interface AnnotateTaskRequestBody {
     conv_mask_to_poly: boolean;
     threshold?: number;
     enable_skeleton_tracking?: boolean;
+    enable_tracking?: boolean;
+    enable_polygon_tracking?: boolean;
 }
 
 function convertMappingToServer(mapping: FullMapping): ServerMapping {
@@ -115,6 +117,8 @@ function DetectorRunner(props: Props): JSX.Element {
     const [mapping, setMapping] = useState<FullMapping>([]);
     const [convertMasksToPolygons, setConvertMasksToPolygons] = useState<boolean>(false);
     const [detectorThreshold, setDetectorThreshold] = useState<number | null>(null);
+    const [enableTracking, setEnableTracking] = useState<boolean>(false);
+    const [enablePolygonTracking, setEnablePolygonTracking] = useState<boolean>(false);
     const [modelLabels, setModelLabels] = useState<LabelInterface[]>([]);
     const [taskLabels, setTaskLabels] = useState<LabelInterface[]>([]);
 
@@ -123,6 +127,10 @@ function DetectorRunner(props: Props): JSX.Element {
     const isReId = model?.kind === ModelKind.REID;
     const convertMasks2PolygonVisible = isDetector &&
         [LabelType.ANY, LabelType.MASK].includes(model.returnType);
+    const polygonTrackingVisible = isDetector &&
+        (model?.supportedShapeTypes?.includes(ShapeType.POLYGON) ||
+         model?.supportedShapeTypes?.includes(ShapeType.MASK) ||
+         [LabelType.ANY, LabelType.MASK].includes(model?.returnType || LabelType.ANY));
 
     const buttonEnabled = model && (isReId || (isDetector && mapping.length));
 
@@ -229,6 +237,30 @@ function DetectorRunner(props: Props): JSX.Element {
                 </div>
             )}
             {isDetector && (
+                <div className='cvat-detector-runner-enable-tracking-wrapper'>
+                    <Switch
+                        checked={enableTracking}
+                        onChange={(checked: boolean): void => setEnableTracking(checked)}
+                    />
+                    <Text>Enable tracking</Text>
+                    <CVATTooltip title='Enable tracking mode to create polygon tracks instead of individual shapes per frame'>
+                        <QuestionCircleOutlined className='cvat-info-circle-icon' />
+                    </CVATTooltip>
+                </div>
+            )}
+            {polygonTrackingVisible && (
+                <div className='cvat-detector-runner-enable-polygon-tracking-wrapper'>
+                    <Switch
+                        checked={enablePolygonTracking}
+                        onChange={(checked: boolean): void => setEnablePolygonTracking(checked)}
+                    />
+                    <Text>Enable polygon tracking</Text>
+                    <CVATTooltip title='Create PolygonTrack items by tracking objects across frames. Handles gaps, new objects, and disappearing objects. Only works for video tasks.'>
+                        <QuestionCircleOutlined className='cvat-info-circle-icon' />
+                    </CVATTooltip>
+                </div>
+            )}
+            {isDetector && (
                 <div className='cvat-detector-runner-threshold-wrapper'>
                     <Row align='middle' justify='start'>
                         <Col>
@@ -311,6 +343,8 @@ function DetectorRunner(props: Props): JSX.Element {
                                     conv_mask_to_poly: convertMasksToPolygons,
                                     ...(detectorThreshold !== null ? { threshold: detectorThreshold } : {}),
                                     ...(shouldEnableSkeletonTracking(model, mapping) ? { enable_skeleton_tracking: true } : {}),
+                                    ...(enableTracking ? { enable_tracking: true } : {}),
+                                    ...(enablePolygonTracking ? { enable_polygon_tracking: true } : {}),
                                 };
 
                                 runInference(model, body);
