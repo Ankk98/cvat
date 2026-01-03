@@ -52,6 +52,7 @@ interface Props {
     runAnnotationAction(): void;
     edit(): void;
     slice(): void;
+    convertMaskToPolygon(): void;
 }
 
 function ItemTopComponent(props: Props): JSX.Element {
@@ -90,6 +91,7 @@ function ItemTopComponent(props: Props): JSX.Element {
         runAnnotationAction,
         edit,
         slice,
+        convertMaskToPolygon,
         jobInstance,
     } = props;
 
@@ -173,6 +175,7 @@ function ItemTopComponent(props: Props): JSX.Element {
                             edit,
                             slice,
                             runAnnotationAction,
+                            convertMaskToPolygon,
                         })}
                     >
                         <Col span={2}>

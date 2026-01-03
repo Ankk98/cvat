@@ -46,6 +46,7 @@ interface Props {
     runAnnotationAction(): void;
     edit(): void;
     slice(): void;
+    convertMaskToPolygon(): void;
 }
 
 function ObjectItemComponent(props: Props): JSX.Element {
@@ -79,6 +80,7 @@ function ObjectItemComponent(props: Props): JSX.Element {
         runAnnotationAction,
         edit,
         slice,
+        convertMaskToPolygon,
         jobInstance,
         workspace,
     } = props;
@@ -142,6 +144,7 @@ function ObjectItemComponent(props: Props): JSX.Element {
                     edit={edit}
                     slice={slice}
                     runAnnotationAction={runAnnotationAction}
+                    convertMaskToPolygon={convertMaskToPolygon}
                 />
                 <ObjectButtonsContainer readonly={readonly} clientID={clientID} />
                 {(!!attributes.length || sizeControlsVisible) && (

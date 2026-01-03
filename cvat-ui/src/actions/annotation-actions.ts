@@ -1415,9 +1415,12 @@ export function repeatDrawShapeAsync(): ThunkAction {
         let activeControl = ActiveControl.CURSOR;
         if (activeInteractor && activeInteractorParameters && activeLabelID && canvasInstance instanceof Canvas) {
             if (activeInteractor.kind.includes('tracker')) {
+                // Use the first supported shape type from the tracker
+                const supportedTypes = activeInteractor.supportedShapeTypes || [ShapeType.RECTANGLE];
+                const shapeType = supportedTypes[0].toLowerCase();
                 canvasInstance.interact({
                     enabled: true,
-                    shapeType: 'rectangle',
+                    shapeType,
                 });
                 dispatch(interactWithCanvas(activeInteractor, activeLabelID, {}));
                 dispatch(switchToolsBlockerState({ buttonVisible: false }));
