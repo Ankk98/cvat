@@ -45,6 +45,7 @@ interface SAMPlugin {
         core: CVATCore | null;
         jobs: Record<number, Job>;
         modelID: string;
+        modelIDs: string[];
         modelURL: string;
         embeddings: LRUCache<string, Tensor>;
         lowResMasks: LRUCache<string, Tensor>;
@@ -145,7 +146,7 @@ const samPlugin: SAMPlugin = {
                             }
                         }
 
-                        if (model.id === plugin.data.modelID) {
+                        if (plugin.data.modelIDs.includes(model.id)) {
                             if (!plugin.data.initialized) {
                                 samPlugin.data.worker.postMessage({
                                     action: WorkerAction.INIT,
@@ -193,7 +194,7 @@ const samPlugin: SAMPlugin = {
                         bounds: [number, number, number, number];
                     }> {
                     return new Promise((resolve, reject) => {
-                        if (model.id !== plugin.data.modelID) {
+                        if (!plugin.data.modelIDs.includes(model.id)) {
                             resolve(result);
                             return;
                         }
@@ -232,18 +233,22 @@ const samPlugin: SAMPlugin = {
                                 };
 
                                 const clicks: ClickType[] = [];
-                                if (obj_bbox.length) {
+                                if (obj_bbox && obj_bbox.length) {
                                     clicks.push({ clickType: 2, x: obj_bbox[0][0], y: obj_bbox[0][1] });
                                     clicks.push({ clickType: 3, x: obj_bbox[1][0], y: obj_bbox[1][1] });
                                 }
 
-                                pos_points.forEach((point) => {
-                                    clicks.push({ clickType: 1, x: point[0], y: point[1] });
-                                });
+                                if (pos_points && pos_points.length) {
+                                    pos_points.forEach((point) => {
+                                        clicks.push({ clickType: 1, x: point[0], y: point[1] });
+                                    });
+                                }
 
-                                neg_points.forEach((point) => {
-                                    clicks.push({ clickType: 0, x: point[0], y: point[1] });
-                                });
+                                if (neg_points && neg_points.length) {
+                                    neg_points.forEach((point) => {
+                                        clicks.push({ clickType: 0, x: point[0], y: point[1] });
+                                    });
+                                }
 
                                 const isLowResMaskSuitable = JSON
                                     .stringify(clicks.slice(0, -1)) === JSON.stringify(plugin.data.lastClicks);
@@ -317,6 +322,7 @@ const samPlugin: SAMPlugin = {
         worker: new Worker(new URL('./inference.worker', import.meta.url)),
         jobs: {},
         modelID: 'pth-facebookresearch-sam-vit-h',
+        modelIDs: ['pth-facebookresearch-sam-vit-h', 'pth-facebookresearch-sam-vit-h-rocm'],
         modelURL: '/assets/decoder.onnx',
         embeddings: new LRUCache({
             // float32 tensor [256, 64, 64] is 4 MB, max 128 MB
