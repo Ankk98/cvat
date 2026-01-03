@@ -1397,6 +1397,13 @@ class LambdaJob:
             enable_skeleton_tracking = kwargs.get("enable_skeleton_tracking", False)
             enable_polygon_tracking = kwargs.get("enable_polygon_tracking", False)
 
+            # Log which mode we're using (for debugging)
+            slogger.glob.info(
+                f"[LAMBDA_JOB] Detector function {function.id}: "
+                f"skeleton_tracking={enable_skeleton_tracking}, "
+                f"polygon_tracking={enable_polygon_tracking}"
+            )
+
             # Validate skeleton tracking request if enabled
             if enable_skeleton_tracking:
                 is_valid, error_msg = validate_skeleton_tracking_request(
@@ -1406,6 +1413,7 @@ class LambdaJob:
                     slogger.glob.warning(f"Skeleton tracking validation failed: {error_msg}")
                     # Fall back to standard detection
                     enable_skeleton_tracking = False
+                    slogger.glob.info("[LAMBDA_JOB] Falling back to standard detector (skeleton tracking disabled)")
 
             # Validate polygon tracking request if enabled
             if enable_polygon_tracking:
@@ -1413,9 +1421,13 @@ class LambdaJob:
                 if db_task.data.get_frame_step() != 1:
                     slogger.glob.warning("Polygon tracking only works for video tasks (frame_step=1)")
                     enable_polygon_tracking = False
+                    slogger.glob.info("[LAMBDA_JOB] Falling back to standard detector (polygon tracking disabled)")
 
+            # CRITICAL: Only use tracking builders if explicitly enabled
+            # This ensures standard detection creates shapes, not tracks
             if enable_skeleton_tracking:
                 # Use skeleton track builder for video tracking
+                slogger.glob.info(f"[LAMBDA_JOB] Using SkeletonTrackBuilder for function {function.id}")
                 from cvat.apps.lambda_manager.skeleton_tracker import SkeletonTrackBuilder
                 builder = SkeletonTrackBuilder(db_task, db_job)
                 builder.build_and_submit_tracks(
@@ -1427,6 +1439,7 @@ class LambdaJob:
                 )
             elif enable_polygon_tracking:
                 # Use polygon track builder for mask/polygon tracking
+                slogger.glob.info(f"[LAMBDA_JOB] Using PolygonTrackBuilder for function {function.id}")
                 from cvat.apps.lambda_manager.polygon_tracker import PolygonTrackBuilder
                 builder = PolygonTrackBuilder(db_task, db_job)
                 builder.build_and_submit_tracks(
@@ -1439,7 +1452,8 @@ class LambdaJob:
                     kwargs.get("max_frame_gap") or 5,
                 )
             else:
-                # Use standard detector (frame-by-frame)
+                # Use standard detector (frame-by-frame) - creates SHAPES, not tracks
+                slogger.glob.info(f"[LAMBDA_JOB] Using standard detector (frame-by-frame) for function {function.id}")
                 cls._call_detector(
                     function,
                     db_task,

@@ -119,6 +119,7 @@ function DetectorRunner(props: Props): JSX.Element {
     const [detectorThreshold, setDetectorThreshold] = useState<number | null>(null);
     const [enableTracking, setEnableTracking] = useState<boolean>(false);
     const [enablePolygonTracking, setEnablePolygonTracking] = useState<boolean>(false);
+    const [enableSkeletonTracking, setEnableSkeletonTracking] = useState<boolean>(false);
     const [modelLabels, setModelLabels] = useState<LabelInterface[]>([]);
     const [taskLabels, setTaskLabels] = useState<LabelInterface[]>([]);
 
@@ -131,6 +132,8 @@ function DetectorRunner(props: Props): JSX.Element {
         (model?.supportedShapeTypes?.includes(ShapeType.POLYGON) ||
          model?.supportedShapeTypes?.includes(ShapeType.MASK) ||
          [LabelType.ANY, LabelType.MASK].includes(model?.returnType || LabelType.ANY));
+    // Skeleton tracking is available if model has skeleton labels and at least one is mapped
+    const skeletonTrackingVisible = isDetector && shouldEnableSkeletonTracking(model, mapping);
 
     const buttonEnabled = model && (isReId || (isDetector && mapping.length));
 
@@ -260,6 +263,18 @@ function DetectorRunner(props: Props): JSX.Element {
                     </CVATTooltip>
                 </div>
             )}
+            {skeletonTrackingVisible && (
+                <div className='cvat-detector-runner-enable-skeleton-tracking-wrapper'>
+                    <Switch
+                        checked={enableSkeletonTracking}
+                        onChange={(checked: boolean): void => setEnableSkeletonTracking(checked)}
+                    />
+                    <Text>Enable skeleton tracking</Text>
+                    <CVATTooltip title='Create SkeletonTrack items by tracking skeletons across frames. Handles gaps, new objects, and disappearing objects. Only works for video tasks (frame_step=1).'>
+                        <QuestionCircleOutlined className='cvat-info-circle-icon' />
+                    </CVATTooltip>
+                </div>
+            )}
             {isDetector && (
                 <div className='cvat-detector-runner-threshold-wrapper'>
                     <Row align='middle' justify='start'>
@@ -342,7 +357,7 @@ function DetectorRunner(props: Props): JSX.Element {
                                     cleanup,
                                     conv_mask_to_poly: convertMasksToPolygons,
                                     ...(detectorThreshold !== null ? { threshold: detectorThreshold } : {}),
-                                    ...(shouldEnableSkeletonTracking(model, mapping) ? { enable_skeleton_tracking: true } : {}),
+                                    ...(enableSkeletonTracking ? { enable_skeleton_tracking: true } : {}),
                                     ...(enableTracking ? { enable_tracking: true } : {}),
                                     ...(enablePolygonTracking ? { enable_polygon_tracking: true } : {}),
                                 };
