@@ -4,7 +4,7 @@
 # (e.g. docker.io/rocm/pytorch:rocm7.1_ubuntu22.04_py3.10_pytorch_2.2.2).
 #
 # Usage:
-#   ./deploy_rocm_host.sh [functions_dir]
+#   ./deploy_rocm_host.sh [functions_dir] [config_file]
 # Environment overrides:
 #   NUCTL_BIN        - nuctl binary to invoke (default: nuctl)
 #   NUCTL_PLATFORM   - Nuclio platform target (default: local)
@@ -17,6 +17,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 FUNCTIONS_DIR="${1:-$SCRIPT_DIR}"
+CONFIG_FILE="${2:-}"  # Specific config file to deploy (optional)
 NUCTL_BIN="${NUCTL_BIN:-nuctl}"
 NUCTL_PLATFORM="${NUCTL_PLATFORM:-local}"
 NUCLIO_PROJECT="${NUCLIO_PROJECT:-cvat}"
@@ -34,21 +35,37 @@ fi
 shopt -s globstar nullglob
 declare -A selected_configs=()
 
-for path in "$FUNCTIONS_DIR"/**/function-rocm.yaml; do
-    [ -f "$path" ] || continue
-    func_root="$(dirname "$path")"
-    selected_configs["$func_root"]="$path"
-done
+# If a specific config file is provided, use it
+if [ -n "$CONFIG_FILE" ]; then
+    # Look for the config file in the functions directory or its subdirectories
+    if [ -f "$FUNCTIONS_DIR/$CONFIG_FILE" ]; then
+        selected_configs["$FUNCTIONS_DIR"]="$FUNCTIONS_DIR/$CONFIG_FILE"
+    elif [ -f "$FUNCTIONS_DIR/nuclio/$CONFIG_FILE" ]; then
+        selected_configs["$FUNCTIONS_DIR/nuclio"]="$FUNCTIONS_DIR/nuclio/$CONFIG_FILE"
+    else
+        echo "Warning: Specified config file $CONFIG_FILE not found, falling back to default search" >&2
+    fi
+fi
 
-if [ "$INCLUDE_GPU_FALLBACK" = "1" ]; then
-    for path in "$FUNCTIONS_DIR"/**/function-gpu.yaml; do
+# If no specific config was found or specified, use default behavior
+if [ ${#selected_configs[@]} -eq 0 ]; then
+    # Default behavior: look for ROCm configs
+    for path in "$FUNCTIONS_DIR"/**/function-rocm.yaml; do
         [ -f "$path" ] || continue
         func_root="$(dirname "$path")"
-        # Only register GPU configs if no ROCm variant was found.
-        if [ -z "${selected_configs[$func_root]:-}" ]; then
-            selected_configs["$func_root"]="$path"
-        fi
+        selected_configs["$func_root"]="$path"
     done
+
+    if [ "$INCLUDE_GPU_FALLBACK" = "1" ]; then
+        for path in "$FUNCTIONS_DIR"/**/function-gpu.yaml; do
+            [ -f "$path" ] || continue
+            func_root="$(dirname "$path")"
+            # Only register GPU configs if no ROCm variant was found.
+            if [ -z "${selected_configs[$func_root]:-}" ]; then
+                selected_configs["$func_root"]="$path"
+            fi
+        done
+    fi
 fi
 
 if [ ${#selected_configs[@]} -eq 0 ]; then

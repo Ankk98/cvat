@@ -1,0 +1,43 @@
+# Dockerfile for FCAF3D with MMDetection3D - ROCm GPU Version
+# Uses pre-built MMDetection3D base image for faster builds and consistency
+
+FROM ankk98/mmdet3d-rocm:latest
+
+# Set environment variables for CVAT FCAF3D
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONPATH=/opt/fcaf3d
+ENV CUDA_VISIBLE_DEVICES=0
+ENV TORCH_USE_CUDA_DSA=1
+
+# Install additional system dependencies for CVAT FCAF3D
+RUN apt-get update && apt-get install -y \
+    git \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libopenblas-dev \
+    ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install MinkowskiEngine for FCAF3D sparse convolutions
+# (Not included in base MMDetection3D image)
+# Build from source with BLAS override to avoid numpy.distutils issues
+RUN cd /tmp && \
+    git clone https://github.com/NVIDIA/MinkowskiEngine.git && \
+    cd MinkowskiEngine && \
+    python setup.py install --blas=openblas
+
+# Create FCAF3D working directories
+RUN mkdir -p /opt/fcaf3d/checkpoints /opt/fcaf3d/configs
+
+# Copy FCAF3D configs from base image
+RUN cp -r /mmdetection3d/configs/fcaf3d /opt/fcaf3d/configs/
+
+# Set working directory
+WORKDIR /opt/fcaf3d
+
+# Default command
+CMD ["python3", "--version"]

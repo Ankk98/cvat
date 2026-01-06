@@ -91,3 +91,4 @@ nuctl*
 tmp-docs/
 
 .bash_history
+serverless/pytorch/mmdetection3d/fcaf3d/checkpoints/*
