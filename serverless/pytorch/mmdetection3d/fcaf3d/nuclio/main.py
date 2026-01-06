@@ -55,8 +55,8 @@ class FCAF3DDetector:
             self.logger.info(f"Default confidence threshold: {self.confidence_threshold}")
 
         # Model configuration
-        self.config_file = os.getenv("FCAF3D_CONFIG", "configs/fcaf3d/fcaf3d_8x2_scannet-3d-18class.py")
-        self.checkpoint_file = os.getenv("FCAF3D_CHECKPOINT", "checkpoints/fcaf3d_scannet.pth")
+        self.config_file = os.getenv("FCAF3D_CONFIG", "configs/fcaf3d/fcaf3d_2xb8_scannet-3d-18class.py")
+        self.checkpoint_file = os.getenv("FCAF3D_CHECKPOINT", "checkpoints/fcaf3d_8x2_scannet-3d-18class_20220805_084956.pth")
 
         if self.logger:
             self.logger.info(f"Config file: {self.config_file}")
@@ -344,7 +344,8 @@ class FCAF3DDetector:
                 end_time = os.times()[4] if hasattr(os, 'times') else 0
 
                 if self.logger:
-                    self.logger.info("✅ FCAF3D inference completed"                    self.logger.info(f"⏱️ Inference time: {end_time - start_time:.3f}s" if start_time else "N/A")
+                    self.logger.info("✅ FCAF3D inference completed")
+                    self.logger.info(f"⏱️ Inference time: {end_time - start_time:.3f}s" if start_time else "N/A")
                     self.logger.info(f"📊 Raw results keys: {list(results.keys()) if isinstance(results, dict) else type(results)}")
 
                 # Convert to CVAT format
@@ -379,7 +380,6 @@ def init_context(context):
     """
     context.logger.info("🚀 === NUCLIO FUNCTION INITIALIZATION ===")
     context.logger.info("Initializing FCAF3D detector (MMDetection3D)")
-    context.logger.info(f"Function name: {context.name}")
     context.logger.info(f"Python version: {sys.version}")
 
     # Environment info

@@ -39,8 +39,28 @@ RUN mkdir -p /opt/fcaf3d/checkpoints /opt/fcaf3d/configs
 # Copy FCAF3D configs from base image
 RUN cp -r /mmdetection3d/configs/fcaf3d /opt/fcaf3d/configs/
 
-# Set working directory
-WORKDIR /opt/fcaf3d
+# Install web service dependencies
+RUN pip install fastapi uvicorn[standard] pydantic python-multipart requests
 
-# Default command
-CMD ["python3", "--version"]
+# Copy the web service app and detector code to both locations
+COPY app.py /opt/fcaf3d/app.py
+COPY app.py /mmdetection3d/app.py
+COPY nuclio/main.py /opt/fcaf3d/main.py
+COPY nuclio/main.py /mmdetection3d/main.py
+
+# Ensure configs and checkpoints are available in /mmdetection3d
+RUN mkdir -p /mmdetection3d/configs/fcaf3d /mmdetection3d/checkpoints && \
+    cp -r /opt/fcaf3d/configs/* /mmdetection3d/configs/ 2>/dev/null || true && \
+    cp -r /opt/fcaf3d/checkpoints/* /mmdetection3d/checkpoints/ 2>/dev/null || true
+
+# Create symlink for Nuclio Python executable (use virtual environment)
+RUN mkdir -p /usr/local/bin && ln -sf /opt/venv/bin/python3 /usr/local/bin/python3
+
+# Set working directory
+WORKDIR /mmdetection3d
+
+# Expose port
+EXPOSE 8000
+
+# Default command - run the web service
+CMD ["python3", "app.py"]

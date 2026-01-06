@@ -84,7 +84,91 @@ stop_all_functions() {
         fi
     done
 
-    echo "✓ All point cloud functions stopped"
+    # Stop FCAF3D service container
+    stop_fcaf3d_service
+
+    echo "✓ All point cloud functions and services stopped"
+}
+
+start_fcaf3d_service() {
+    local fcaf3d_dir="$SCRIPT_DIR/pytorch/mmdetection3d/fcaf3d"
+
+    echo "Starting FCAF3D service container..."
+
+    if [ ! -d "$fcaf3d_dir" ]; then
+        echo "Error: FCAF3D directory not found: $fcaf3d_dir"
+        return 1
+    fi
+
+    cd "$fcaf3d_dir"
+
+    # Check if FCAF3D container is already running
+    if docker ps --format '{{.Names}}' | grep -q '^fcaf3d-service$'; then
+        echo "FCAF3D service container is already running"
+        return 0
+    fi
+
+    # Check if container exists but is stopped
+    if docker ps -a --format '{{.Names}}' | grep -q '^fcaf3d-service$'; then
+        echo "Starting existing FCAF3D service container..."
+        docker start fcaf3d-service
+        if [ $? -eq 0 ]; then
+            echo "✓ FCAF3D service container started"
+            return 0
+        fi
+    fi
+
+    # Build and start using docker-compose
+    echo "Building and starting FCAF3D service container..."
+    if docker compose up -d --build; then
+        echo "✓ FCAF3D service container started successfully"
+        # Wait for service to be healthy
+        echo "Waiting for FCAF3D service to be ready..."
+        local max_attempts=30
+        local attempt=0
+        while [ $attempt -lt $max_attempts ]; do
+            if curl -s http://localhost:8001/health > /dev/null 2>&1; then
+                echo "✓ FCAF3D service is healthy"
+                return 0
+            fi
+            sleep 2
+            ((attempt++))
+        done
+        echo "⚠️ WARNING: FCAF3D service started but health check timed out"
+        return 0  # Still return success, service might be starting
+    else
+        echo "❌ Failed to start FCAF3D service container"
+        return 1
+    fi
+}
+
+stop_fcaf3d_service() {
+    local fcaf3d_dir="$SCRIPT_DIR/pytorch/mmdetection3d/fcaf3d"
+
+    echo "Stopping FCAF3D service container..."
+
+    if [ ! -d "$fcaf3d_dir" ]; then
+        echo "Warning: FCAF3D directory not found: $fcaf3d_dir"
+        return 0
+    fi
+
+    cd "$fcaf3d_dir"
+
+    # Check if container is running
+    if ! docker ps --format '{{.Names}}' | grep -q '^fcaf3d-service$'; then
+        echo "FCAF3D service container is not running"
+        return 0
+    fi
+
+    # Stop using docker-compose
+    echo "Stopping FCAF3D service container..."
+    if docker compose down; then
+        echo "✓ FCAF3D service container stopped successfully"
+        return 0
+    else
+        echo "⚠️ Failed to stop FCAF3D service container"
+        return 1
+    fi
 }
 
 deploy_pointcloud() {
@@ -94,6 +178,36 @@ deploy_pointcloud() {
     if [ ! -d "$path" ]; then
         echo "Error: Directory $path not found for $label"
         return 1
+    fi
+
+    # Special handling for FCAF3D proxy deployment
+    if [ "$label" = "FCAF3D 3D Cuboids (ROCm)" ]; then
+        echo "Processing FCAF3D proxy deployment (automatically manages service and Nuclio function)..."
+
+        # Step 1: Ensure FCAF3D service is running
+        echo "Ensuring FCAF3D service is running..."
+        if ! start_fcaf3d_service; then
+            echo "❌ Failed to start FCAF3D service"
+            return 1
+        fi
+
+        # Step 2: Verify service is accessible
+        echo "Verifying FCAF3D service is accessible..."
+        max_attempts=10
+        attempt=0
+        while [ $attempt -lt $max_attempts ]; do
+            if curl -s -f http://localhost:8001/health > /dev/null 2>&1; then
+                echo "✓ FCAF3D service is accessible"
+                break
+            fi
+            if [ $attempt -eq $((max_attempts - 1)) ]; then
+                echo "❌ FCAF3D service is not responding after $max_attempts attempts"
+                return 1
+            fi
+            echo "Waiting for FCAF3D service to be ready... (attempt $((attempt + 1))/$max_attempts)"
+            sleep 2
+            ((attempt++))
+        done
     fi
 
     # Check for function config files
@@ -119,6 +233,30 @@ deploy_pointcloud() {
         echo "Deploying $label via $DEPLOYER (config: $config_file)"
         "$DEPLOYER" "$path" "$(basename "$config_file")"
         echo "✓ Successfully deployed $label"
+
+        # Show FCAF3D deployment summary
+        if [ "$label" = "FCAF3D 3D Cuboids (ROCm)" ]; then
+            echo ""
+            echo "=========================================="
+            echo "✅ FCAF3D deployment completed!"
+            echo "=========================================="
+            echo ""
+            echo "Function name: pth-mmdet3d-fcaf3d-rocm"
+            echo ""
+            echo "Service Information:"
+            echo "  🔗 Service: http://fcaf3d-service:8000 (Docker container on cvat_cvat network)"
+            echo "  🎯 Function: pth-mmdet3d-fcaf3d-rocm (Auto Annotation)"
+            echo ""
+            echo "Management:"
+            echo "  Check function: nuctl get function pth-mmdet3d-fcaf3d-rocm --platform local"
+            echo "  Check service: curl http://localhost:8001/health"
+            echo "  Stop service: docker compose down (from fcaf3d directory)"
+            echo ""
+            echo "Next steps:"
+            echo "  1. The function will appear in CVAT's Detectors tab"
+            echo "  2. Test with 3D point cloud datasets"
+            echo ""
+        fi
     else
         echo "Error: No function config found under $path"
         return 1

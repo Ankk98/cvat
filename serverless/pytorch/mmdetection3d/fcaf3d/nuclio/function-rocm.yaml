@@ -17,30 +17,28 @@ metadata:
       ]
 
 spec:
-  description: FCAF3D fully convolutional anchor-free 3D object detection for indoor scenes using MMDetection3D on ROCm GPUs. Optimized for pedestrian detection in social navigation datasets.
-  runtime: 'python:3.10'
-  handler: main:handler
+  description: FCAF3D fully convolutional anchor-free 3D object detection for indoor scenes using MMDetection3D on ROCm GPUs. Optimized for pedestrian detection in social navigation datasets. (Proxy implementation)
+  runtime: 'python:3.9'
+  handler: main-proxy:handler
   eventTimeout: 60s  # FCAF3D can be slower than heuristic methods
   env:
-    - name: PYTHONPATH
-      value: /mmdetection3d:/opt/venv/lib/python3.10/site-packages:/opt/fcaf3d
-    - name: DEFAULT_CONFIDENCE_THRESHOLD
-      value: "0.3"
-    - name: FCAF3D_CONFIG
-      value: "configs/fcaf3d/fcaf3d_1x8_scannet-3d-18class.py"
-    - name: FCAF3D_CHECKPOINT
-      value: "checkpoints/fcaf3d_scannet.pth"
-    # MMDetection3D environment
-    - name: CUDA_VISIBLE_DEVICES
-      value: "0"
-    - name: TORCH_USE_CUDA_DSA
-      value: "1"
-
-  image: ankk98/cvat-fcaf3d-rocm:latest
-
-  # Set working directory for proper path resolution
-  workdir: /opt/fcaf3d
-
+    - name: FCAF3D_SERVICE_URL
+      value: "http://fcaf3d-service:8000"
+    - name: FCAF3D_SERVICE_TIMEOUT
+      value: '60'
+  build:
+    image: cvat.pth.mmdet3d.fcaf3d.proxy
+    baseImage: python:3.9-slim
+    directives:
+      preCopy:
+      - kind: WORKDIR
+        value: /opt/nuclio
+      - kind: RUN
+        value: apt-get update && apt-get install -y curl --no-install-recommends && rm -rf /var/lib/apt/lists/*
+      - kind: RUN
+        value: pip install --upgrade pip
+      - kind: RUN
+        value: pip install requests
   triggers:
     myHttpTrigger:
       numWorkers: 1
@@ -48,12 +46,6 @@ spec:
       workerAvailabilityTimeoutMilliseconds: 10000
       attributes:
         maxRequestBodySize: 67108864  # 64MB for large point clouds
-
-  # GPU resource requirements
-  # FCAF3D benefits significantly from GPU acceleration
-  resources:
-    limits:
-      amd.com/gpu: 1
 
   platform:
     attributes:
