@@ -80,7 +80,7 @@ class PointCloudDetector:
         # Smaller voxel_size = higher resolution = more points = slower processing
 
         # === DETECTION THRESHOLDS ===
-        self.default_threshold = float(os.getenv("DEFAULT_CONFIDENCE_THRESHOLD", "0.2"))  # 0-1 confidence threshold
+        self.default_threshold = float(os.getenv("DEFAULT_CONFIDENCE_THRESHOLD", "0.10"))  # 0-1 confidence threshold
         self.confidence_norm = float(os.getenv("CONFIDENCE_NORMALIZER", "256"))  # Legacy parameter
 
         # === PEDESTRIAN SIZE FILTERS ===
@@ -179,24 +179,35 @@ class PointCloudDetector:
 
             # === STEP 6: CREATE CVAT-COMPATIBLE CUBOID ANNOTATION ===
 
-            # CVAT cuboid format: [center_x, center_y, center_z, rot_x, rot_y, rot_z, scale_x, scale_y, scale_z]
+            # CVAT cuboid format requires exactly 16 points total
+            # We provide: center(3) + rotation(3) + scale(3) + padding(7) = 16
             # - Center: Object position (from cluster centroid)
-            # - Rotation: Only Z-rotation (heading) is estimated, X/Y rotations = 0
+            # - Rotation: Only Z-rotation (yaw) estimated from PCA, X/Y = 0
             # - Scale: Bounding box dimensions (length, width, height)
+            # - Padding: Extra zeros to satisfy CVAT's validation
             detection = {
                 "confidence": f"{confidence:.4f}",
                 "label": label,
                 "type": "cuboid",
                 "points": [
+                    # Center position (3 values)
                     float(center[0]),   # Center X
                     float(center[1]),   # Center Y
                     float(center[2]),   # Center Z
+
+                    # Rotation angles (3 values) - only Z used for heading
                     0.0,                # Rotation X (roll) - not estimated
                     0.0,                # Rotation Y (pitch) - not estimated
                     float(heading),     # Rotation Z (yaw) - PCA-estimated heading
-                    float(extent[0]),   # Scale X (length)
-                    float(extent[1]),   # Scale Y (width)
-                    float(extent[2]),   # Scale Z (height)
+
+                    # Scale/dimensions (3 values)
+                    float(extent[0]),   # Length (X dimension)
+                    float(extent[1]),   # Width (Y dimension)
+                    float(extent[2]),   # Height (Z dimension)
+
+                    # Pad to 16 points as required by CVAT cuboid validation
+                    # CVAT expects 16 values for cuboids (8 corners × 2 coords or other format)
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
                 ],
             }
 
@@ -217,36 +228,95 @@ class PointCloudDetector:
 
     def _compute_confidence(self, cluster_pts: np.ndarray, extent: np.ndarray) -> float:
         """
-        Compute detection confidence based on point density.
+        Compute detection confidence based on multiple cluster characteristics.
 
-        Higher density = more compact, well-defined object = higher confidence
-        Lower density = sparse, potentially noisy clusters = lower confidence
-
-        For pedestrians in LiDAR data:
-        - Good detections: 50-300 points per cubic meter
-        - Poor detections: <50 points/m³ (too sparse)
-        - Background noise: >300 points/m³ (too dense, likely ground/buildings)
+        Combines density, size, and shape factors for more robust pedestrian detection
+        in real-world LiDAR data from social navigation scenarios.
         """
         num_points = cluster_pts.shape[0]
-
-        # Calculate points per unit volume (density metric)
-        volume = extent[0] * extent[1] * extent[2]  # L × W × H
+        volume = extent[0] * extent[1] * extent[2]
         density = num_points / volume if volume > 0 else 0
 
-        self.logger.debug("Confidence calc: %d points, volume=%.2f, density=%.1f points/m³",
-                        num_points, volume, density)
+        # Size-based confidence (more points = more confident, up to ~100 points)
+        size_score = min(num_points / 80.0, 1.0)
 
-        # Normalize density to 0-1 confidence score
-        # These thresholds are tuned for typical LiDAR pedestrian detection
-        min_density = 5.0   # Allow sparse clusters (more detections)
-        max_density = 300.0 # Cap at realistic pedestrian density
+        # Density-based confidence (higher density = more confident)
+        min_density = 1.0
+        max_density = 150.0
+        density_score = (density - min_density) / (max_density - min_density)
+        density_score = np.clip(density_score, 0, 1)
 
-        # Linear normalization: (value - min) / (max - min)
-        normalized_density = (density - min_density) / (max_density - min_density)
-        normalized_density = np.clip(normalized_density, 0, 1)  # Clamp to [0,1]
+        # Shape-based confidence (prefer more compact, pedestrian-like shapes)
+        # Penalize elongated clusters (likely not pedestrians)
+        if extent[0] > 0 and extent[1] > 0 and extent[2] > 0:
+            max_extent = max(extent)
+            avg_extent = np.mean(extent)
+            elongation_penalty = max_extent / avg_extent if avg_extent > 0 else 1.0
+            shape_score = 1.0 / (1.0 + elongation_penalty * 0.5)
+        else:
+            shape_score = 0.5
 
-        self.logger.debug("Normalized confidence: %.3f", normalized_density)
-        return float(normalized_density)
+        # Combine scores: density (40%), size (40%), shape (20%)
+        combined_score = 0.4 * density_score + 0.4 * size_score + 0.2 * shape_score
+
+        self.logger.debug("Confidence calc: %d points, volume=%.2f, density=%.1f, size_score=%.2f, density_score=%.2f, shape_score=%.2f -> combined=%.3f",
+                        num_points, volume, density, size_score, density_score, shape_score, combined_score)
+
+        return float(np.clip(combined_score, 0, 1))
+
+    def _cuboid_to_vertices(self, center: np.ndarray, extent: np.ndarray, heading: float) -> List[float]:
+        """
+        Convert cuboid from center+rotation+scale format to 8 vertices format.
+
+        CVAT's CuboidShape expects 8 vertices with [x,y] coordinates each (16 values total).
+        This creates a 2D projection of the 3D cuboid for CVAT compatibility.
+
+        The cuboid is oriented with the given heading (yaw rotation) and projected
+        to 2D by using the bottom face vertices.
+
+        Args:
+            center: [x, y, z] center position
+            extent: [length, width, height] dimensions
+            heading: yaw rotation in radians
+
+        Returns:
+            List of 16 floats: [x1,y1, x2,y2, ..., x8,y8] (8 vertices × 2 coords)
+        """
+        cx, cy, cz = center
+        length, width, height = extent  # extent[0]=length, [1]=width, [2]=height
+
+        # Half dimensions
+        hl, hw = length/2, width/2
+
+        # Create 2D cuboid vertices (bottom face) in local coordinate system
+        # CVAT expects 8 vertices for cuboid representation
+        vertices_2d_local = np.array([
+            [-hl, -hw],  # 0: back-left
+            [ hl, -hw],  # 1: back-right
+            [ hl,  hw],  # 2: front-right
+            [-hl,  hw],  # 3: front-left
+            [-hl, -hw],  # 4: back-left (repeated for cuboid edges)
+            [ hl, -hw],  # 5: back-right (repeated)
+            [ hl,  hw],  # 6: front-right (repeated)
+            [-hl,  hw],  # 7: front-left (repeated)
+        ])
+
+        # Rotation matrix for yaw (heading) around Z-axis
+        cos_h = np.cos(heading)
+        sin_h = np.sin(heading)
+        rotation_matrix = np.array([
+            [cos_h, -sin_h],
+            [sin_h,  cos_h]
+        ])
+
+        # Rotate vertices around Z-axis
+        vertices_2d_rotated = vertices_2d_local @ rotation_matrix.T
+
+        # Translate to center position (only X,Y since CVAT uses 2D vertices)
+        vertices_2d_world = vertices_2d_rotated + np.array([cx, cy])
+
+        # Flatten to [x1,y1, x2,y2, ..., x8,y8] format (16 values)
+        return vertices_2d_world.flatten().tolist()
 
     def _compute_heading(self, cluster_pts: np.ndarray) -> float:
         """
