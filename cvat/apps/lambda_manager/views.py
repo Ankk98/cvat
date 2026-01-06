@@ -301,12 +301,10 @@ class LambdaFunction:
                     "animated_gif": self.animated_gif,
                 }
             )
-        elif self.kind is FunctionKind.TRACKER:
-            response.update(
-                {
-                    "supported_shape_types": self.supported_shape_types or ["rectangle"],
-                }
-            )
+
+        # Include supported_shape_types for all function types that have them
+        if self.supported_shape_types is not None:
+            response["supported_shape_types"] = self.supported_shape_types
 
         return response
 

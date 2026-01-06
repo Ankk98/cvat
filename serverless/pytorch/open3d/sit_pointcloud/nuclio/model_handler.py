@@ -7,6 +7,7 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 import open3d as o3d
+from sklearn.decomposition import PCA
 
 
 class PointCloudDetector:
@@ -47,15 +48,19 @@ class PointCloudDetector:
             if not np.all(np.isfinite(extent)) or np.any(extent <= 0):
                 continue
 
-            confidence = min(
-                0.99, cluster_pts.shape[0] / (self.confidence_norm + cluster_pts.shape[0])
-            )
+            confidence = self._compute_confidence(cluster_pts, extent)
 
             if confidence < threshold:
                 continue
 
             label = self._label_for_extent(extent)
+            if not label:  # Skip if label is empty (doesn't match task labels)
+                continue
+
             center = cluster_pts.mean(axis=0)
+
+            # Compute heading using PCA for direction estimation
+            heading = self._compute_heading(cluster_pts)
 
             detections.append(
                 {
@@ -66,9 +71,9 @@ class PointCloudDetector:
                         float(center[0]),
                         float(center[1]),
                         float(center[2]),
-                        0.0,
-                        0.0,
-                        0.0,
+                        0.0,  # Rotation around X (roll) - keep 0
+                        0.0,  # Rotation around Y (pitch) - keep 0
+                        float(heading),  # Rotation around Z (yaw) - use computed heading
                         float(extent[0]),
                         float(extent[1]),
                         float(extent[2]),
@@ -83,6 +88,50 @@ class PointCloudDetector:
             "Frame %s -> %d cuboids (threshold %.2f)", frame_id, len(detections), threshold
         )
         return detections
+
+    def _compute_confidence(self, cluster_pts: np.ndarray, extent: np.ndarray) -> float:
+        """Compute confidence based on point density and cluster quality."""
+        num_points = cluster_pts.shape[0]
+
+        # Point density (points per unit volume)
+        volume = extent[0] * extent[1] * extent[2]
+        density = num_points / volume if volume > 0 else 0
+
+        # Normalize confidence (adjust thresholds as needed)
+        min_density = 10.0  # Minimum expected points per cubic meter
+        max_density = 1000.0  # Maximum expected points per cubic meter
+
+        normalized_density = (density - min_density) / (max_density - min_density)
+        normalized_density = np.clip(normalized_density, 0, 1)
+
+        return float(normalized_density)
+
+    def _compute_heading(self, cluster_pts: np.ndarray) -> float:
+        """Compute heading angle using PCA on XY plane.
+
+        Returns:
+            float: Heading angle in radians (yaw around Z-axis)
+                  Positive values indicate counter-clockwise rotation from +X axis
+        """
+        try:
+            # Use only X and Y coordinates for heading
+            xy_pts = cluster_pts[:, :2]
+
+            # Perform PCA to find principal direction
+            pca = PCA(n_components=2)
+            pca.fit(xy_pts)
+
+            # Get first principal component (direction of maximum variance)
+            principal_component = pca.components_[0]
+
+            # Compute heading angle in radians
+            # arctan2(y, x) returns angle from +X axis
+            heading = np.arctan2(principal_component[1], principal_component[0])
+
+            return float(heading)
+        except Exception as e:
+            self.logger.warning(f"Failed to compute heading: {e}")
+            return 0.0
 
     def _cluster(self, points: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         pcd = o3d.geometry.PointCloud()
@@ -100,36 +149,54 @@ class PointCloudDetector:
         return down_pts, labels
 
     def _label_for_extent(self, extent: np.ndarray) -> str:
+        """Determine label based on object dimensions.
+
+        Returns:
+            str: "Pedestrian" if matches pedestrian dimensions,
+                 "" (empty string) otherwise (to skip non-matching objects)
+        """
         sorted_xy = sorted(extent[:2], reverse=True)
         length = sorted_xy[0]
         width = sorted_xy[1]
         height = extent[2]
+
+        # Check if object matches pedestrian dimensions
         if (
             length <= self.pedestrian_max_length
             and width <= self.pedestrian_max_width
             and height <= self.pedestrian_max_height
         ):
-            return "pedestrian"
-        if length <= self.vehicle_max_length and height <= self.vehicle_max_height:
-            return "car"
-        return "truck"
+            return "Pedestrian"  # Capital P to match task label
+
+        # Return empty string for non-pedestrian objects
+        # This prevents creating annotations for cars/trucks that aren't in your labels
+        return ""
 
     def _load_points(self, raw: bytes) -> np.ndarray:
+        """Load point cloud from binary data.
+
+        Supports:
+        - KITTI BIN format: float32 array [x, y, z, intensity]
+        - PCD format: ASCII or binary
+        """
         # Distinguish between PCD (ASCII/binary) and KITTI BIN (float32) sources.
         header = raw[:16]
         if header.startswith(b"VERSION") or header.startswith(b"# .PCD"):
             return self._read_pcd(raw)
 
         try:
+            # Try KITTI BIN format first
             arr = np.frombuffer(raw, dtype=np.float32)
             if arr.size % 4 != 0:
                 arr = arr[: arr.size - (arr.size % 4)]
+            # KITTI format: [x, y, z, intensity], take only XYZ
             return arr.reshape(-1, 4)[:, :3]
         except ValueError:
             # Fall back to PCD path if reshape fails
             return self._read_pcd(raw)
 
     def _read_pcd(self, raw: bytes) -> np.ndarray:
+        """Read PCD format point cloud."""
         with tempfile.NamedTemporaryFile(suffix=".pcd", delete=False) as tmp:
             tmp.write(raw)
             tmp.flush()
@@ -148,4 +215,3 @@ class PointCloudDetector:
                 pass
 
         return pts
-

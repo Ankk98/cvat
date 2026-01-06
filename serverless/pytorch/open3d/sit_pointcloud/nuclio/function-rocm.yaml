@@ -3,18 +3,16 @@ metadata:
   namespace: cvat
   annotations:
     name: SIT PointCloud Cuboids (ROCm)
-    version: 1
+    version: 2
     type: detector
     supported_shape_types: cuboid
     spec: |
       [
-        { "id": 0, "name": "car", "type": "cuboid" },
-        { "id": 1, "name": "truck", "type": "cuboid" },
-        { "id": 2, "name": "pedestrian", "type": "cuboid" }
+        { "id": 0, "name": "Pedestrian", "type": "cuboid" }
       ]
 
 spec:
-  description: Heuristic LiDAR cuboid proposals for SIT robotics datasets on ROCm GPUs
+  description: Heuristic LiDAR cuboid proposals for social navigation datasets on ROCm GPUs. Computes heading using PCA for direction estimation.
   runtime: 'python:3.10'
   handler: main:handler
   eventTimeout: 30s
@@ -27,6 +25,12 @@ spec:
       value: "40"
     - name: DBSCAN_EPS
       value: "1.0"
+    - name: PEDESTRIAN_MAX_LENGTH
+      value: "1.5"
+    - name: PEDESTRIAN_MAX_WIDTH
+      value: "1.0"
+    - name: PEDESTRIAN_MAX_HEIGHT
+      value: "2.0"
 
   build:
     image: cvat.pth.open3d.sit_pointcloud:latest-rocm
@@ -43,7 +47,7 @@ spec:
         - kind: RUN
           value: pip3 install --upgrade pip
         - kind: RUN
-          value: pip3 install open3d==0.18.0 numpy
+          value: pip3 install open3d==0.18.0 numpy scikit-learn
 
   triggers:
     myHttpTrigger:
@@ -63,4 +67,3 @@ spec:
         name: always
         maximumRetryCount: 3
       mountMode: volume
-
