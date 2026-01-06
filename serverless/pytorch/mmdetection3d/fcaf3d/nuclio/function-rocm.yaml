@@ -23,7 +23,7 @@ spec:
   eventTimeout: 60s  # FCAF3D can be slower than heuristic methods
   env:
     - name: PYTHONPATH
-      value: /opt/nuclio/fcaf3d_mmdet3d
+      value: /mmdetection3d:/opt/venv/lib/python3.10/site-packages:/opt/fcaf3d
     - name: DEFAULT_CONFIDENCE_THRESHOLD
       value: "0.3"
     - name: FCAF3D_CONFIG
@@ -37,6 +37,9 @@ spec:
       value: "1"
 
   image: ankk98/cvat-fcaf3d-rocm:latest
+
+  # Set working directory for proper path resolution
+  workdir: /opt/fcaf3d
 
   triggers:
     myHttpTrigger:

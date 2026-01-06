@@ -30,6 +30,9 @@ RUN cd /tmp && \
     cd MinkowskiEngine && \
     python setup.py install --blas=openblas
 
+# Create symlink for Nuclio Python executable (use virtual environment)
+RUN mkdir -p /usr/local/bin && ln -sf /opt/venv/bin/python3 /usr/local/bin/python3
+
 # Create FCAF3D working directories
 RUN mkdir -p /opt/fcaf3d/checkpoints /opt/fcaf3d/configs
 
