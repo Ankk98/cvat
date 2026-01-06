@@ -2,10 +2,15 @@ metadata:
   name: pth-open3d-sit-pointcloud-rocm
   namespace: cvat
   annotations:
+    # Display name in CVAT UI
     name: SIT PointCloud Cuboids (ROCm)
+    # Model version for tracking changes
     version: 2
+    # Function type: detector (for automatic annotation)
     type: detector
+    # Supported annotation shapes: cuboid (3D boxes)
     supported_shape_types: cuboid
+    # Output labels: only Pedestrian detections
     spec: |
       [
         { "id": 0, "name": "Pedestrian", "type": "cuboid" }
@@ -57,6 +62,9 @@ spec:
       attributes:
         maxRequestBodySize: 33554432 # 32MB
 
+  # GPU resource requirements
+  # Uses AMD GPU acceleration via ROCm for fast point cloud processing
+  # Open3D operations (voxel downsampling, DBSCAN clustering) are GPU accelerated
   resources:
     limits:
       amd.com/gpu: 1
