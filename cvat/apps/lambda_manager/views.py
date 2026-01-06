@@ -579,9 +579,9 @@ class LambdaFunction:
             if key in data:
                 payload[key] = data[key]
             elif key == "task_id":
-                payload[key] = db_task.id
+                payload[key] = str(db_task.id)
             elif key == "job_id" and db_job:
-                payload[key] = db_job.id
+                payload[key] = str(db_job.id)
 
         # In interactive tracker mode, we usually want video mode if not specified
         if self.kind == FunctionKind.TRACKER and "tracking_mode" not in payload:

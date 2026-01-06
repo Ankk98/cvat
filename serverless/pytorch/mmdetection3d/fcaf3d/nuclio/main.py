@@ -3,6 +3,7 @@ import json
 import tempfile
 import os
 import sys
+import numpy as np
 from typing import List, Dict, Any, Optional
 
 # MMDetection3D imports - PYTHONPATH should be set correctly by Nuclio
@@ -288,6 +289,64 @@ class FCAF3DDetector:
 
         return detections
 
+    def _pcd_to_bin(self, pcd_bytes: bytes) -> np.ndarray:
+        """
+        Convert PCD format to FCAF3D format for MMDetection3D compatibility.
+
+        Args:
+            pcd_bytes: PCD file data as bytes
+
+        Returns:
+            np.ndarray: Point cloud in FCAF3D format (N, 6) [x, y, z, r, g, b]
+        """
+        import io
+
+        if self.logger:
+            self.logger.debug("Converting PCD to BIN format...")
+
+        # Save PCD to temporary file for Open3D to read
+        with tempfile.NamedTemporaryFile(suffix='.pcd', delete=False) as pcd_tmp:
+            pcd_tmp.write(pcd_bytes)
+            pcd_path = pcd_tmp.name
+
+        try:
+            # Use Open3D to read PCD file (same as SIT detector)
+            try:
+                import open3d as o3d
+            except ImportError:
+                if self.logger:
+                    self.logger.error("❌ Open3D not available for PCD conversion")
+                raise
+
+            pcd = o3d.io.read_point_cloud(pcd_path)
+            points = np.asarray(pcd.points)
+
+            if self.logger:
+                self.logger.debug(f"Read {len(points)} points from PCD")
+
+            # Convert to FCAF3D format: [x, y, z, r, g, b] (6 values per point)
+            # FCAF3D uses load_dim=6 for ScanNet dataset with RGB color information
+            if points.shape[1] == 3:
+                # Add RGB channels (set to 128 for all points = neutral gray)
+                rgb = np.full((len(points), 3), 128, dtype=np.float32)
+                points_bin = np.concatenate([points, rgb], axis=1).astype(np.float32)
+            else:
+                # If already has more than 3 channels, ensure exactly 6
+                points_bin = points[:, :6].astype(np.float32)
+                if points.shape[1] < 6:
+                    # Pad with zeros if needed
+                    padding = np.zeros((len(points), 6 - points.shape[1]), dtype=np.float32)
+                    points_bin = np.concatenate([points_bin, padding], axis=1)
+
+            if self.logger:
+                self.logger.debug(f"Converted to BIN format: {points_bin.shape}")
+
+            return points_bin
+
+        finally:
+            # Clean up temporary PCD file
+            os.unlink(pcd_path)
+
     def _get_label_name(self, label_id: int) -> str:
         """Convert label ID to label name."""
         # Map ScanNet class IDs to CVAT labels
@@ -324,11 +383,63 @@ class FCAF3DDetector:
         threshold = threshold or self.confidence_threshold
 
         try:
-            # Save point cloud to temporary file
+            # Detect format and prepare point cloud file
+            import sys
+            print(f"DEBUG: FCAF3D infer called with {len(cloud_bytes)} bytes", file=sys.stderr)
             if self.logger:
-                self.logger.info("💾 Creating temporary point cloud file...")
-            with tempfile.NamedTemporaryFile(suffix='.bin', delete=False) as tmp_file:
-                tmp_file.write(cloud_bytes)
+                self.logger.info("💾 Preparing point cloud file...")
+                self.logger.info(f"🔍 DEBUG: Received {len(cloud_bytes)} bytes of data")
+
+            # Detect format using same logic as SIT detector
+            header = cloud_bytes[:16]
+            if self.logger:
+                self.logger.info(f"🔍 File header: {header[:20]!r}")
+
+            is_pcd = header.startswith(b"VERSION") or header.startswith(b"# .PCD")
+
+            if is_pcd:
+                if self.logger:
+                    self.logger.info("📄 Detected PCD format - converting to BIN for MMDetection3D")
+                try:
+                    # Convert PCD to BIN format for MMDetection3D compatibility
+                    points = self._pcd_to_bin(cloud_bytes)
+                    file_suffix = '.bin'
+                    file_data = points.tobytes()
+                    if self.logger:
+                        self.logger.info(f"📊 Converted {len(points)} points ({len(file_data)} bytes) to BIN format")
+                except Exception as e:
+                    if self.logger:
+                        self.logger.warning(f"❌ PCD conversion failed: {e}, falling back to raw data")
+                    # Fallback: use raw data
+                    file_suffix = '.bin'
+                    file_data = cloud_bytes
+            else:
+                # Try BIN format first (like SIT does)
+                if len(cloud_bytes) % 4 == 0 and len(cloud_bytes) >= 16:
+                    if self.logger:
+                        self.logger.info("📄 Assuming BIN format - using as-is")
+                    file_suffix = '.bin'
+                    file_data = cloud_bytes
+                    if self.logger:
+                        self.logger.info(f"📊 Using BIN data: {len(file_data)} bytes ({len(file_data) // 16} points)")
+                else:
+                    # Data doesn't look like BIN, try PCD conversion as fallback
+                    if self.logger:
+                        self.logger.info("📄 Data doesn't look like BIN, trying PCD conversion")
+                    try:
+                        points = self._pcd_to_bin(cloud_bytes)
+                        file_suffix = '.bin'
+                        file_data = points.tobytes()
+                        if self.logger:
+                            self.logger.info(f"📊 PCD fallback: {len(points)} points ({len(file_data)} bytes) to BIN format")
+                    except Exception as e:
+                        if self.logger:
+                            self.logger.error(f"❌ PCD fallback failed: {e}, using data as-is")
+                        file_suffix = '.bin'
+                        file_data = cloud_bytes
+
+            with tempfile.NamedTemporaryFile(suffix=file_suffix, delete=False) as tmp_file:
+                tmp_file.write(file_data)
                 tmp_path = tmp_file.name
 
             if self.logger:
@@ -468,3 +579,4 @@ def handler(context, event):
             content_type="application/json",
             status_code=500,
         )
+# Force rebuild 2

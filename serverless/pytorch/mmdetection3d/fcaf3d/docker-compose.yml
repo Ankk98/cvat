@@ -26,6 +26,12 @@ services:
     volumes:
       - ./checkpoints:/mmdetection3d/checkpoints:ro
     restart: unless-stopped
+    # GPU access for ROCm
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

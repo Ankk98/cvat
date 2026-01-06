@@ -39,14 +39,20 @@ RUN mkdir -p /opt/fcaf3d/checkpoints /opt/fcaf3d/configs
 # Copy FCAF3D configs from base image
 RUN cp -r /mmdetection3d/configs/fcaf3d /opt/fcaf3d/configs/
 
-# Install web service dependencies
-RUN pip install fastapi uvicorn[standard] pydantic python-multipart requests
+# Install web service dependencies and Open3D for PCD conversion
+RUN pip install fastapi uvicorn[standard] pydantic python-multipart requests open3d==0.18.0
 
 # Copy the web service app and detector code to both locations
 COPY app.py /opt/fcaf3d/app.py
 COPY app.py /mmdetection3d/app.py
 COPY nuclio/main.py /opt/fcaf3d/main.py
 COPY nuclio/main.py /mmdetection3d/main.py
+
+# Verify the copy worked and show file info
+RUN echo "=== Verification of copied files ===" && \
+    ls -la /mmdetection3d/main.py && \
+    wc -l /mmdetection3d/main.py && \
+    grep -c "File header" /mmdetection3d/main.py || echo "File header not found"
 
 # Ensure configs and checkpoints are available in /mmdetection3d
 RUN mkdir -p /mmdetection3d/configs/fcaf3d /mmdetection3d/checkpoints && \

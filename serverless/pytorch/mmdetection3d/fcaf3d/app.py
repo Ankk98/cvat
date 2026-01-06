@@ -130,6 +130,10 @@ async def detect_objects(request: DetectionRequest):
         cloud_bytes = base64.b64decode(request.image)
         logger.info(f"📊 Point cloud size: {len(cloud_bytes)} bytes")
 
+        # DEBUG: Check header
+        header = cloud_bytes[:20]
+        logger.info(f"🔍 DEBUG: Data header: {header!r}")
+
         # Run detection
         logger.info("🎯 Starting FCAF3D detection...")
         threshold = request.threshold if request.threshold is not None else detector.confidence_threshold
