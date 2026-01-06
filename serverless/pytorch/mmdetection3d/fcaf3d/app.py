@@ -70,6 +70,15 @@ async def startup_event():
     global detector
     logger.info("🚀 Starting FCAF3D service initialization...")
 
+    # Check if MinkowskiEngine is available (installed at build time with --cpu_only)
+    try:
+        import MinkowskiEngine as ME
+        logger.info("✅ MinkowskiEngine CPU-only is available")
+        logger.info("🔄 Using CPU-only MinkowskiEngine: sparse convolutions run on CPU")
+    except ImportError:
+        logger.error("❌ MinkowskiEngine not found - should have been installed at build time")
+        raise RuntimeError("MinkowskiEngine not available - check Dockerfile installation")
+
     try:
         logger.info("🏗️ Creating FCAF3D detector instance...")
         detector = FCAF3DDetector(logger)

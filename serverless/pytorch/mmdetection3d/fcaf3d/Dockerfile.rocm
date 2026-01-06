@@ -24,11 +24,11 @@ RUN apt-get update && apt-get install -y \
 
 # Install MinkowskiEngine for FCAF3D sparse convolutions
 # (Not included in base MMDetection3D image)
-# Build from source with BLAS override to avoid numpy.distutils issues
+# Build from source with BLAS override and CPU-only flag to avoid GPU compilation issues
 RUN cd /tmp && \
     git clone https://github.com/NVIDIA/MinkowskiEngine.git && \
     cd MinkowskiEngine && \
-    python setup.py install --blas=openblas
+    python setup.py install --blas=openblas --cpu_only
 
 # Create symlink for Nuclio Python executable (use virtual environment)
 RUN mkdir -p /usr/local/bin && ln -sf /opt/venv/bin/python3 /usr/local/bin/python3
@@ -46,7 +46,7 @@ RUN pip install fastapi uvicorn[standard] pydantic python-multipart requests ope
 COPY app.py /opt/fcaf3d/app.py
 COPY app.py /mmdetection3d/app.py
 COPY nuclio/main.py /opt/fcaf3d/main.py
-COPY nuclio/main.py /mmdetection3d/main.py
+COPY main_modified.py /mmdetection3d/main.py
 
 # Verify the copy worked and show file info
 RUN echo "=== Verification of copied files ===" && \
@@ -58,6 +58,9 @@ RUN echo "=== Verification of copied files ===" && \
 RUN mkdir -p /mmdetection3d/configs/fcaf3d /mmdetection3d/checkpoints && \
     cp -r /opt/fcaf3d/configs/* /mmdetection3d/configs/ 2>/dev/null || true && \
     cp -r /opt/fcaf3d/checkpoints/* /mmdetection3d/checkpoints/ 2>/dev/null || true
+
+# Copy modified MinkowskiEngine-compatible detector
+COPY mmdet3d/models/detectors/mink_single_stage.py /mmdetection3d/mmdet3d/models/detectors/mink_single_stage.py
 
 # Create symlink for Nuclio Python executable (use virtual environment)
 RUN mkdir -p /usr/local/bin && ln -sf /opt/venv/bin/python3 /usr/local/bin/python3
