@@ -8,7 +8,7 @@ import Button from 'antd/lib/button';
 import { MenuProps } from 'antd/lib/menu';
 import Icon, {
     LinkOutlined, CopyOutlined, BlockOutlined, RetweetOutlined, DeleteOutlined, EditOutlined,
-    FunctionOutlined,
+    FunctionOutlined, SwapOutlined,
 } from '@ant-design/icons';
 
 import {
@@ -51,6 +51,7 @@ interface Props {
     edit(): void;
     slice(): void;
     runAnnotationAction(): void;
+    convertMaskToPolygon(): void;
     jobInstance: Job;
 }
 
@@ -254,6 +255,23 @@ function RunAnnotationActionItem(props: ItemProps): JSX.Element {
     );
 }
 
+function ConvertMaskToPolygonItem(props: ItemProps): JSX.Element {
+    const { toolProps } = props;
+    const { convertMaskToPolygon } = toolProps;
+    return (
+        <CVATTooltip title='Convert mask to polygon'>
+            <Button
+                type='link'
+                icon={<SwapOutlined />}
+                onClick={convertMaskToPolygon}
+                className='cvat-object-item-menu-convert-mask-to-polygon'
+            >
+                Convert mask to polygon
+            </Button>
+        </CVATTooltip>
+    );
+}
+
 export default function ItemMenu(props: Props): MenuProps {
     const {
         readonly, locked, shapeType, objectType, colorBy, jobInstance,
@@ -271,6 +289,7 @@ export default function ItemMenu(props: Props): MenuProps {
         REMOVE_ITEM = 'remove_item',
         EDIT_MASK = 'edit_mask',
         SLICE_ITEM = 'slice_item',
+        CONVERT_MASK_TO_POLYGON = 'convert_mask_to_polygon',
         RUN_ANNOTATION_ACTION = 'run_annotation_action',
     }
 
@@ -292,6 +311,10 @@ export default function ItemMenu(props: Props): MenuProps {
         items.push({
             key: MenuKeys.EDIT_MASK,
             label: <EditMaskItem toolProps={props} />,
+        });
+        items.push({
+            key: MenuKeys.CONVERT_MASK_TO_POLYGON,
+            label: <ConvertMaskToPolygonItem toolProps={props} />,
         });
     }
 

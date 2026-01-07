@@ -12,13 +12,14 @@ import textwrap
 from copy import deepcopy
 from datetime import timedelta
 from functools import wraps
-from typing import Any, Optional
+from typing import Any, Optional, Tuple, Dict
 
 import datumaro.util.mask_tools as mask_tools
 import django_rq
 import numpy as np
 import requests
 import rq
+import cv2
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.signing import BadSignature, TimestampSigner
@@ -44,6 +45,7 @@ from cvat.apps.engine.models import (
     RequestTarget,
     ShapeType,
     SourceType,
+    StorageChoice,
     Task,
 )
 from cvat.apps.engine.rq import RequestId, define_dependent_job
@@ -110,12 +112,23 @@ class LambdaGateway:
         return response
 
     def list(self):
-        data = self._http(url=self.NUCLIO_ROOT_URL)
-        for item in data.values():
-            try:
-                yield LambdaFunction(self, item)
-            except InvalidFunctionMetadataError:
-                slogger.glob.error("Failed to parse lambda function metadata", exc_info=True)
+        # Try to get Nuclio functions
+        try:
+            data = self._http(url=self.NUCLIO_ROOT_URL)
+            if isinstance(data, dict):
+                functions = data.values()
+            elif isinstance(data, (list, tuple)):
+                functions = data
+            else:
+                functions = []
+
+            for item in functions:
+                try:
+                    yield LambdaFunction(self, item)
+                except InvalidFunctionMetadataError:
+                    slogger.glob.error("Failed to parse lambda function metadata", exc_info=True)
+        except Exception as e:
+            slogger.glob.warning(f"Failed to retrieve Nuclio functions: {e}. Built-in functions will still be available.")
 
     def get(self, func_id):
         data = self._http(url=self.NUCLIO_ROOT_URL + "/" + func_id)
@@ -123,12 +136,14 @@ class LambdaGateway:
         return response
 
     def invoke(self, func, payload):
+        # Use direct invocation for Nuclio functions
+        invoke_mode = settings.NUCLIO.get("INVOKE_METHOD", "direct")
         invoke_method = {
             "dashboard": self._invoke_via_dashboard,
             "direct": self._invoke_directly,
         }
 
-        return invoke_method[settings.NUCLIO["INVOKE_METHOD"]](func, payload)
+        return invoke_method[invoke_mode](func, payload)
 
     def _invoke_via_dashboard(self, func, payload):
         return self._http(
@@ -146,11 +161,13 @@ class LambdaGateway:
         else:
             url = f"http://localhost:{func.port}"
 
+        slogger.glob.info(f"[LAMBDA_GATEWAY] Invoking function {func.id} (kind: {func.kind}) at URL: {url}")
         with make_requests_session() as session:
             reply = session.post(url, timeout=NUCLIO_TIMEOUT, json=payload)
             reply.raise_for_status()
             response = reply.json()
 
+        slogger.glob.info(f"[LAMBDA_GATEWAY] Function {func.id} responded successfully")
         return response
 
 
@@ -284,12 +301,10 @@ class LambdaFunction:
                     "animated_gif": self.animated_gif,
                 }
             )
-        elif self.kind is FunctionKind.TRACKER:
-            response.update(
-                {
-                    "supported_shape_types": self.supported_shape_types or ["rectangle"],
-                }
-            )
+
+        # Include supported_shape_types for all function types that have them
+        if self.supported_shape_types is not None:
+            response["supported_shape_types"] = self.supported_shape_types
 
         return response
 
@@ -466,11 +481,15 @@ class LambdaFunction:
                     )
 
         if self.kind == FunctionKind.DETECTOR:
-            payload.update({"image": self._get_image(db_task, mandatory_arg("frame"))})
+            payload.update({
+                "image": self._get_image(db_task, data.get("frame", 0)),
+                "frame": data.get("frame", 0),
+            })
         elif self.kind == FunctionKind.INTERACTOR:
             payload.update(
                 {
-                    "image": self._get_image(db_task, mandatory_arg("frame")),
+                    "image": self._get_image(db_task, data.get("frame", 0)),
+                    "frame": data.get("frame", 0),
                     "pos_points": mandatory_arg("pos_points"),
                     "neg_points": mandatory_arg("neg_points"),
                     "obj_bbox": data.get("obj_bbox", None),
@@ -532,7 +551,8 @@ class LambdaFunction:
 
                 payload.update(
                     {
-                        "image": self._get_image(db_task, mandatory_arg("frame")),
+                        "image": self._get_image(db_task, data.get("frame", 0)),
+                        "frame": data.get("frame", 0),
                         "shapes": list(map(prepare_shape, shapes)),
                         "states": [
                             (
@@ -554,10 +574,26 @@ class LambdaFunction:
                 code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+        # Pass additional context if available
+        for key in ("tracking_mode", "job_id", "task_id"):
+            if key in data:
+                payload[key] = data[key]
+            elif key == "task_id":
+                payload[key] = str(db_task.id)
+            elif key == "job_id" and db_job:
+                payload[key] = str(db_job.id)
+
+        # In interactive tracker mode, we usually want video mode if not specified
+        if self.kind == FunctionKind.TRACKER and "tracking_mode" not in payload:
+            payload["tracking_mode"] = "video"
+
         if is_interactive and request:
             interactive_function_call_signal.send(sender=self, request=request)
 
+        # Log which function is being invoked (for debugging routing)
+        slogger.glob.info(f"[LAMBDA_INVOKE] Invoking function: {self.id} (kind: {self.kind}, port: {self.port})")
         response = self.gateway.invoke(self, payload)
+        slogger.glob.info(f"[LAMBDA_INVOKE] Function {self.id} returned response type: {type(response)}")
 
         def check_attr_value(value, db_attr):
             if db_attr is None:
@@ -624,21 +660,49 @@ class LambdaFunction:
 
             response = converter.convert(
                 conv_mask_to_poly=data.get("conv_mask_to_poly", False),
-                frame=mandatory_arg("frame"),
+                frame=data.get("frame", 0),
                 annotations=response_filtered,
             )
         elif self.kind == FunctionKind.TRACKER:
-            if "shapes" in response and not self.supported_shape_types:
-                response["shapes"] = [
-                    None if points is None else {"type": ShapeType.RECTANGLE, "points": points}
-                    for points in response["shapes"]
-                ]
+            if "shapes" in response:
+                # Map labels for tracker shapes
+                for item in response["shapes"]:
+                    item_label = item["label"]
+                    if item_label in mapping:
+                        db_label = mapping[item_label]["db_label"]
+                        item["label"] = db_label.name
+                        item["attributes"] = transform_attributes(
+                            item.get("attributes", {}),
+                            mapping[item_label]["attributes"],
+                            db_label.attributespec_set.values(),
+                        )
+
+                        if "elements" in item:
+                            sublabels = mapping[item_label]["sublabels"]
+                            item["elements"] = [x for x in item["elements"] if x["label"] in sublabels]
+                            for element in item["elements"]:
+                                element_label = element["label"]
+                                sublabel_info = sublabels[element_label]
+                                db_label = sublabel_info["db_label"]
+                                element["label"] = db_label.name
+                                element["attributes"] = transform_attributes(
+                                    element.get("attributes", {}),
+                                    sublabel_info["attributes"],
+                                    db_label.attributespec_set.values(),
+                                )
+
+                if not self.supported_shape_types:
+                    response["shapes"] = [
+                        None if points is None else {"type": ShapeType.RECTANGLE, "points": points}
+                        for points in response["shapes"]
+                    ]
+
             response["states"] = [
                 # We could've used .sign_object, but that unconditionally applies
                 # an extra layer of Base64 encoding, bloating each state by 33%.
                 # So we just encode the state manually instead.
                 signer.sign(json.dumps(state, separators=(",", ":")))
-                for state in response["states"]
+                for state in response.get("states", [])
             ]
 
         return response
@@ -683,6 +747,9 @@ class LambdaQueue:
         request,
         *,
         job: Optional[int] = None,
+        enable_skeleton_tracking: bool = False,
+        enable_polygon_tracking: bool = False,
+        frame_number: Optional[int] = None,
     ) -> LambdaJob:
         queue = self._get_queue()
         rq_id = RequestId(
@@ -716,20 +783,32 @@ class LambdaQueue:
                     db_obj=Job.objects.get(pk=job) if job else Task.objects.get(pk=task),
                     function_id=lambda_func.id,
                 )
+                # Build kwargs for the job
+                job_kwargs = {
+                    "function": lambda_func,
+                    "threshold": threshold,
+                    "task": task,
+                    "job": job,
+                    "cleanup": cleanup,
+                    "conv_mask_to_poly": conv_mask_to_poly,
+                    "mapping": mapping,
+                    "max_distance": max_distance,
+                }
+
+                # Add skeleton tracking flag if enabled
+                if enable_skeleton_tracking:
+                    job_kwargs["enable_skeleton_tracking"] = True
+                # Add polygon tracking flag if enabled
+                if enable_polygon_tracking:
+                    job_kwargs["enable_polygon_tracking"] = True
+                if frame_number is not None:
+                    job_kwargs["frame_number"] = frame_number
+
                 rq_job = queue.create_job(
                     LambdaJob(None),
                     job_id=rq_id,
                     meta=meta,
-                    kwargs={
-                        "function": lambda_func,
-                        "threshold": threshold,
-                        "task": task,
-                        "job": job,
-                        "cleanup": cleanup,
-                        "conv_mask_to_poly": conv_mask_to_poly,
-                        "mapping": mapping,
-                        "max_distance": max_distance,
-                    },
+                    kwargs=job_kwargs,
                     depends_on=define_dependent_job(queue, user_id),
                     result_ttl=self.RESULT_TTL.total_seconds(),
                     failure_ttl=self.FAILED_TTL.total_seconds(),
@@ -765,12 +844,87 @@ class DetectionResultConverter:
                 labels[label.name]["attributes"][attr["name"]] = attr["id"]
         return labels
 
-    def convert(self, *, conv_mask_to_poly: bool, frame: int, annotations: list) -> dict:
+    @staticmethod
+    def _mask_to_polygon(mask_points: list) -> Optional[list]:
+        """
+        Convert mask points (flattened pixels format) to polygon points.
+
+        Mask format: [pixel1, pixel2, ..., x_min, y_min, x_max, y_max]
+        Polygon format: [x1, y1, x2, y2, x3, y3, ...] (at least 6 points, even number)
+
+        Returns None if conversion fails (empty mask, too few points, etc.)
+        """
+        if len(mask_points) < 6:
+            # Need at least 2 pixels + 4 bbox coordinates
+            return None
+
+        try:
+            # Extract bounding box (last 4 values)
+            x_min, y_min, x_max, y_max = [int(x) for x in mask_points[-4:]]
+
+            # Extract flattened pixel data
+            pixel_data = mask_points[:-4]
+
+            # Calculate tight mask dimensions
+            tight_width = x_max - x_min + 1
+            tight_height = y_max - y_min + 1
+
+            if len(pixel_data) != tight_width * tight_height:
+                # Invalid mask format
+                return None
+
+            # Reshape to 2D mask array
+            tight_mask = np.array(pixel_data, dtype=np.uint8).reshape((tight_height, tight_width))
+
+            # Convert to binary mask (0 or 255) for cv2.findContours
+            binary_mask = (tight_mask > 0).astype(np.uint8) * 255
+
+            # Find contours
+            # cv2.findContours returns (contours, hierarchy) in OpenCV 4.x
+            # or (image, contours, hierarchy) in OpenCV 3.x
+            contours_result = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if int(cv2.__version__.split('.')[0]) >= 4:
+                contours = contours_result[0]
+            else:
+                contours = contours_result[1]
+
+            if len(contours) == 0:
+                # No contours found (empty mask)
+                return None
+
+            # Get the largest contour
+            largest_contour = max(contours, key=lambda arr: arr.size)
+
+            # Simplify contour using approxPolyDP (optional, reduces points)
+            epsilon = 2.5  # Approximation accuracy
+            approx_contour = cv2.approxPolyDP(largest_contour, epsilon, closed=True)
+
+            # Convert to flat list format [x1, y1, x2, y2, ...]
+            # Adjust coordinates to full image coordinates (add bbox offset)
+            polygon_points = []
+            for point in approx_contour:
+                x = int(point[0][0]) + x_min
+                y = int(point[0][1]) + y_min
+                polygon_points.extend([x, y])
+
+            # Validate: polygon needs at least 6 points (3 coordinate pairs) and even number
+            if len(polygon_points) < 6 or len(polygon_points) % 2 != 0:
+                return None
+
+            return polygon_points
+
+        except (ValueError, IndexError, TypeError) as e:
+            # Handle any conversion errors gracefully
+            slogger.glob.warning(f"Failed to convert mask to polygon: {e}")
+            return None
+
+    def convert(self, *, conv_mask_to_poly: bool, frame: int, annotations: list, keep_all_skeletons: bool = False) -> dict:
         data = {"tags": [], "shapes": []}
 
         for anno in annotations:
             if parsed := self._parse_anno(
-                labels=self._labels, conv_mask_to_poly=conv_mask_to_poly, frame=frame, anno=anno
+                labels=self._labels, conv_mask_to_poly=conv_mask_to_poly, frame=frame, anno=anno,
+                keep_all_skeletons=keep_all_skeletons
             ):
                 if anno["type"].lower() == "tag":
                     data["tags"].append(parsed)
@@ -782,7 +936,7 @@ class DetectionResultConverter:
         return serializer.validated_data
 
     def _parse_anno(
-        self, *, labels: dict, conv_mask_to_poly: bool, frame: int, anno: dict
+        self, *, labels: dict, conv_mask_to_poly: bool, frame: int, anno: dict, keep_all_skeletons: bool = False
     ) -> Optional[dict]:
         label = labels.get(anno["label"])
         if label is None:
@@ -822,9 +976,17 @@ class DetectionResultConverter:
             if shape["type"] in ("rectangle", "ellipse"):
                 shape["rotation"] = anno.get("rotation", 0)
 
-            if anno["type"] == "mask" and "points" in anno and conv_mask_to_poly:
-                shape["type"] = "polygon"
-                shape["points"] = anno["points"]
+            if anno["type"] == "mask" and conv_mask_to_poly:
+                # Convert mask to polygon
+                polygon_points = self._mask_to_polygon(shape["points"])
+                if polygon_points is not None:
+                    shape["type"] = "polygon"
+                    shape["points"] = polygon_points
+                else:
+                    slogger.glob.warning(f"Failed to convert mask to polygon: {shape['points']}")
+                    # Conversion failed (empty mask, invalid format, etc.)
+                    # Skip this annotation by returning None
+                    return None
             elif anno["type"] == "mask":
                 [xtl, ytl, xbr, ybr] = shape["points"][-4:]
                 cut_points = shape["points"][:-4]
@@ -833,15 +995,23 @@ class DetectionResultConverter:
                 shape["points"] = rle
 
             if shape["type"] == "skeleton":
+                # CVAT backend expects empty points for skeleton type.
+                # Bbox should not be provided here as it causes validation error:
+                # 'invalid length for shape type skeleton' (expected 0).
+                shape["points"] = []
+
                 parsed_elements = [
                     self._parse_anno(
                         labels=label["sublabels"],
                         conv_mask_to_poly=conv_mask_to_poly,
                         frame=frame,
                         anno=x,
+                        keep_all_skeletons=keep_all_skeletons,
                     )
                     for x in anno["elements"]
                 ]
+
+                parsed_elements = [el for el in parsed_elements if el is not None]
 
                 # find a center to set position of missing points
                 center = [0, 0]
@@ -871,7 +1041,8 @@ class DetectionResultConverter:
                         }
 
                 shape["elements"] = list(map(_map, label["sublabels"].values()))
-                if all(element["outside"] for element in shape["elements"]):
+                # Only filter out if not keeping all skeletons (for track building)
+                if not keep_all_skeletons and all(element["outside"] for element in shape["elements"]):
                     return None
 
             return shape
@@ -909,6 +1080,46 @@ class DetectionResultCollector:
         s.is_valid(raise_exception=True)
 
         self._data = s.validated_data
+
+
+def validate_skeleton_tracking_request(
+    function: LambdaFunction,
+    mapping: Optional[Dict],
+    db_task: Task
+) -> Tuple[bool, Optional[str]]:
+    """
+    Validate skeleton tracking request.
+
+    Returns:
+        (is_valid, error_message)
+    """
+    # Check if task is video (frame_step must be 1)
+    if db_task.data.get_frame_step() != 1:
+        return False, "Skeleton tracking only works for video tasks (frame_step=1)"
+
+    # Check if model has skeleton labels
+    labels = function.labels if isinstance(function.labels, list) else []
+    skeleton_labels = [
+        label for label in labels
+        if (isinstance(label, dict) and label.get("type") == "skeleton") or
+           (hasattr(label, "type") and getattr(label, "type", None) == "skeleton")
+    ]
+
+    if not skeleton_labels:
+        return False, "Model does not have skeleton labels"
+
+    # Check if skeleton labels are mapped
+    if mapping:
+        mapped_label_names = set(mapping.keys())
+        skeleton_label_names = {
+            label.get("name") if isinstance(label, dict) else getattr(label, "name", None)
+            for label in skeleton_labels
+        }
+
+        if not skeleton_label_names.intersection(mapped_label_names):
+            return False, "No skeleton labels are mapped to task labels"
+
+    return True, None
 
 
 class LambdaJob:
@@ -997,6 +1208,13 @@ class LambdaJob:
             if frame in db_task.data.deleted_frames:
                 continue
 
+            # Determine tracking mode for detector
+            tracking_mode = (
+                "video"
+                if db_task.data.get_frame_step() == 1
+                else "image"
+            )
+
             annotations = function.invoke(
                 db_task,
                 db_job=db_job,
@@ -1005,6 +1223,7 @@ class LambdaJob:
                     "mapping": mapping,
                     "threshold": threshold,
                     "conv_mask_to_poly": conv_mask_to_poly,
+                    "tracking_mode": tracking_mode,
                 },
                 converter=converter,
             )
@@ -1173,14 +1392,74 @@ class LambdaJob:
                 assert False
 
         if function.kind == FunctionKind.DETECTOR:
-            cls._call_detector(
-                function,
-                db_task,
-                kwargs.get("threshold"),
-                kwargs.get("mapping"),
-                kwargs.get("conv_mask_to_poly"),
-                db_job=db_job,
+            enable_skeleton_tracking = kwargs.get("enable_skeleton_tracking", False)
+            enable_polygon_tracking = kwargs.get("enable_polygon_tracking", False)
+
+            # Log which mode we're using (for debugging)
+            slogger.glob.info(
+                f"[LAMBDA_JOB] Detector function {function.id}: "
+                f"skeleton_tracking={enable_skeleton_tracking}, "
+                f"polygon_tracking={enable_polygon_tracking}"
             )
+
+            # Validate skeleton tracking request if enabled
+            if enable_skeleton_tracking:
+                is_valid, error_msg = validate_skeleton_tracking_request(
+                    function, kwargs.get("mapping"), db_task
+                )
+                if not is_valid:
+                    slogger.glob.warning(f"Skeleton tracking validation failed: {error_msg}")
+                    # Fall back to standard detection
+                    enable_skeleton_tracking = False
+                    slogger.glob.info("[LAMBDA_JOB] Falling back to standard detector (skeleton tracking disabled)")
+
+            # Validate polygon tracking request if enabled
+            if enable_polygon_tracking:
+                # Check if task is video (frame_step must be 1)
+                if db_task.data.get_frame_step() != 1:
+                    slogger.glob.warning("Polygon tracking only works for video tasks (frame_step=1)")
+                    enable_polygon_tracking = False
+                    slogger.glob.info("[LAMBDA_JOB] Falling back to standard detector (polygon tracking disabled)")
+
+            # CRITICAL: Only use tracking builders if explicitly enabled
+            # This ensures standard detection creates shapes, not tracks
+            if enable_skeleton_tracking:
+                # Use skeleton track builder for video tracking
+                slogger.glob.info(f"[LAMBDA_JOB] Using SkeletonTrackBuilder for function {function.id}")
+                from cvat.apps.lambda_manager.skeleton_tracker import SkeletonTrackBuilder
+                builder = SkeletonTrackBuilder(db_task, db_job)
+                builder.build_and_submit_tracks(
+                    function,
+                    kwargs.get("threshold"),
+                    kwargs.get("mapping"),
+                    kwargs.get("conv_mask_to_poly"),
+                    kwargs.get("max_distance") or 150.0,
+                )
+            elif enable_polygon_tracking:
+                # Use polygon track builder for mask/polygon tracking
+                slogger.glob.info(f"[LAMBDA_JOB] Using PolygonTrackBuilder for function {function.id}")
+                from cvat.apps.lambda_manager.polygon_tracker import PolygonTrackBuilder
+                builder = PolygonTrackBuilder(db_task, db_job)
+                builder.build_and_submit_tracks(
+                    function,
+                    kwargs.get("threshold"),
+                    kwargs.get("mapping"),
+                    kwargs.get("conv_mask_to_poly"),
+                    kwargs.get("max_distance") or 150.0,
+                    kwargs.get("iou_threshold") or 0.3,
+                    kwargs.get("max_frame_gap") or 5,
+                )
+            else:
+                # Use standard detector (frame-by-frame) - creates SHAPES, not tracks
+                slogger.glob.info(f"[LAMBDA_JOB] Using standard detector (frame-by-frame) for function {function.id}")
+                cls._call_detector(
+                    function,
+                    db_task,
+                    kwargs.get("threshold"),
+                    kwargs.get("mapping"),
+                    kwargs.get("conv_mask_to_poly"),
+                    db_job=db_job,
+                )
         elif function.kind == FunctionKind.REID:
             cls._call_reid(
                 function,
@@ -1304,7 +1583,7 @@ class FunctionViewSet(viewsets.ViewSet):
 
         converter = None
 
-        if lambda_func.kind == FunctionKind.DETECTOR:
+        if lambda_func.kind in (FunctionKind.DETECTOR, FunctionKind.TRACKER):
             converter = DetectionResultConverter(db_task)
 
         response = lambda_func.invoke(
@@ -1410,6 +1689,11 @@ class RequestViewSet(viewsets.ViewSet):
             conv_mask_to_poly = request_data.get("conv_mask_to_poly", False)
             mapping = request_data.get("mapping")
             max_distance = request_data.get("max_distance")
+            # New parameters for skeleton tracking
+            enable_skeleton_tracking = request_data.get("enable_skeleton_tracking", False)
+            # New parameter for polygon tracking
+            enable_polygon_tracking = request_data.get("enable_polygon_tracking", False)
+            frame_number = request_data.get("frame_number")
         except KeyError as err:
             raise ValidationError(
                 "`{}` lambda function was run ".format(request_data.get("function", "undefined"))
@@ -1430,6 +1714,9 @@ class RequestViewSet(viewsets.ViewSet):
             max_distance,
             request,
             job=job,
+            enable_skeleton_tracking=enable_skeleton_tracking,
+            enable_polygon_tracking=enable_polygon_tracking,
+            frame_number=frame_number,
         )
 
         handle_function_call(function, job or task, category="batch")

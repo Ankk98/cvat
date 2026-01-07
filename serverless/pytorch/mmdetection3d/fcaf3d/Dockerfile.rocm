@@ -1,0 +1,74 @@
+# Dockerfile for FCAF3D with MMDetection3D - ROCm GPU Version
+# Uses pre-built MMDetection3D base image for faster builds and consistency
+
+FROM ankk98/mmdet3d-rocm:latest
+
+# Set environment variables for CVAT FCAF3D
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONPATH=/opt/fcaf3d
+ENV CUDA_VISIBLE_DEVICES=0
+ENV TORCH_USE_CUDA_DSA=1
+
+# Install additional system dependencies for CVAT FCAF3D
+RUN apt-get update && apt-get install -y \
+    git \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libopenblas-dev \
+    ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install MinkowskiEngine for FCAF3D sparse convolutions
+# (Not included in base MMDetection3D image)
+# Build from source with BLAS override and CPU-only flag to avoid GPU compilation issues
+# Copy and install pre-built MinkowskiEngine wheel
+COPY minkowskiengine-0.5.4-cp310-cp310-linux_x86_64.whl /tmp/
+RUN pip install /tmp/minkowskiengine-0.5.4-cp310-cp310-linux_x86_64.whl
+
+# Create symlink for Nuclio Python executable (use virtual environment)
+RUN mkdir -p /usr/local/bin && ln -sf /opt/venv/bin/python3 /usr/local/bin/python3
+
+# Create FCAF3D working directories
+RUN mkdir -p /opt/fcaf3d/checkpoints /opt/fcaf3d/configs
+
+# Copy FCAF3D configs from base image
+RUN cp -r /mmdetection3d/configs/fcaf3d /opt/fcaf3d/configs/
+
+# Install web service dependencies and Open3D for PCD conversion
+RUN pip install fastapi uvicorn[standard] pydantic python-multipart requests open3d==0.18.0
+
+# Copy the web service app and detector code to both locations
+COPY app.py /opt/fcaf3d/app.py
+COPY app.py /mmdetection3d/app.py
+COPY nuclio/main.py /opt/fcaf3d/main.py
+COPY main_modified.py /mmdetection3d/main.py
+
+# Verify the copy worked and show file info
+RUN echo "=== Verification of copied files ===" && \
+    ls -la /mmdetection3d/main.py && \
+    wc -l /mmdetection3d/main.py && \
+    grep -c "File header" /mmdetection3d/main.py || echo "File header not found"
+
+# Ensure configs and checkpoints are available in /mmdetection3d
+RUN mkdir -p /mmdetection3d/configs/fcaf3d /mmdetection3d/checkpoints && \
+    cp -r /opt/fcaf3d/configs/* /mmdetection3d/configs/ 2>/dev/null || true && \
+    cp -r /opt/fcaf3d/checkpoints/* /mmdetection3d/checkpoints/ 2>/dev/null || true
+
+# Copy modified MinkowskiEngine-compatible detector
+COPY mmdet3d/models/detectors/mink_single_stage.py /mmdetection3d/mmdet3d/models/detectors/mink_single_stage.py
+
+# Create symlink for Nuclio Python executable (use virtual environment)
+RUN mkdir -p /usr/local/bin && ln -sf /opt/venv/bin/python3 /usr/local/bin/python3
+
+# Set working directory
+WORKDIR /mmdetection3d
+
+# Expose port
+EXPOSE 8000
+
+# Default command - run the web service
+CMD ["python3", "app.py"]

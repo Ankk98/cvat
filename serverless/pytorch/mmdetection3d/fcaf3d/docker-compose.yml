@@ -1,0 +1,61 @@
+# FCAF3D 3D Object Detection Service - Docker Compose
+# ====================================================
+#
+# This docker-compose file provides an easy way to run the FCAF3D 3D object detection service.
+# The service exposes a REST API for 3D cuboid detection from point clouds.
+#
+# Usage:
+#   docker-compose up -d
+#   docker-compose logs -f
+#   docker-compose down
+
+services:
+  fcaf3d-service:
+    container_name: fcaf3d-service
+    build:
+      context: .
+      dockerfile: Dockerfile.rocm
+    ports:
+      - "8001:8000"  # Expose on port 8001 to avoid conflict with mediapipe
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - FCAF3D_CONFIG=configs/fcaf3d/fcaf3d_2xb8_scannet-3d-18class.py
+      - FCAF3D_CHECKPOINT=checkpoints/fcaf3d_8x2_scannet-3d-18class_20220805_084956.pth
+      - DEFAULT_CONFIDENCE_THRESHOLD=0.3
+    volumes:
+      - ./checkpoints:/mmdetection3d/checkpoints:ro
+    restart: unless-stopped
+    # GPU access for ROCm
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # Give more time for model loading
+    networks:
+      - cvat_cvat
+
+networks:
+  cvat_cvat:
+    external: true
+
+# Example configuration for running alongside CVAT
+#
+# services:
+#   cvat:
+#     image: openvino/cvat_server:latest
+#     ports:
+#       - "8080:8080"
+#     environment:
+#       - CVAT_HOST=localhost
+#       - CVAT_PORT=8080
+#     depends_on:
+#       - fcaf3d-service
+#     networks:
+#       - cvat_cvat

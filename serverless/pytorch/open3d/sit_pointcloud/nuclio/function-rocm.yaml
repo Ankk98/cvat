@@ -1,0 +1,77 @@
+metadata:
+  name: pth-open3d-sit-pointcloud-rocm
+  namespace: cvat
+  annotations:
+    # Display name in CVAT UI
+    name: SIT PointCloud Cuboids (ROCm)
+    # Model version for tracking changes
+    version: 2
+    # Function type: detector (for automatic annotation)
+    type: detector
+    # Supported annotation shapes: cuboid (3D boxes)
+    supported_shape_types: cuboid
+    # Output labels: only Pedestrian detections
+    spec: |
+      [
+        { "id": 0, "name": "Pedestrian", "type": "cuboid" }
+      ]
+
+spec:
+  description: Heuristic LiDAR cuboid proposals for social navigation datasets on ROCm GPUs. Computes heading using PCA for direction estimation.
+  runtime: 'python:3.10'
+  handler: main:handler
+  eventTimeout: 30s
+  env:
+    - name: PYTHONPATH
+      value: /opt/nuclio/sit_pointcloud
+    - name: DEFAULT_CONFIDENCE_THRESHOLD
+      value: "0.35"
+    - name: DBSCAN_MIN_CLUSTER_POINTS
+      value: "40"
+    - name: DBSCAN_EPS
+      value: "1.0"
+    - name: PEDESTRIAN_MAX_LENGTH
+      value: "1.5"
+    - name: PEDESTRIAN_MAX_WIDTH
+      value: "1.0"
+    - name: PEDESTRIAN_MAX_HEIGHT
+      value: "2.0"
+
+  build:
+    image: cvat.pth.open3d.sit_pointcloud:latest-rocm
+    baseImage: docker.io/rocm/pytorch:rocm7.1_ubuntu22.04_py3.10_pytorch_release_2.6.0
+
+    directives:
+      preCopy:
+        - kind: ENV
+          value: DEBIAN_FRONTEND=noninteractive
+        - kind: WORKDIR
+          value: /opt/nuclio/sit_pointcloud
+        - kind: RUN
+          value: apt-get update && apt-get install -y python3 python3-pip libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
+        - kind: RUN
+          value: pip3 install --upgrade pip
+        - kind: RUN
+          value: pip3 install open3d==0.18.0 numpy scikit-learn
+
+  triggers:
+    myHttpTrigger:
+      numWorkers: 1
+      kind: 'http'
+      workerAvailabilityTimeoutMilliseconds: 10000
+      attributes:
+        maxRequestBodySize: 33554432 # 32MB
+
+  # GPU resource requirements
+  # Uses AMD GPU acceleration via ROCm for fast point cloud processing
+  # Open3D operations (voxel downsampling, DBSCAN clustering) are GPU accelerated
+  resources:
+    limits:
+      amd.com/gpu: 1
+
+  platform:
+    attributes:
+      restartPolicy:
+        name: always
+        maximumRetryCount: 3
+      mountMode: volume

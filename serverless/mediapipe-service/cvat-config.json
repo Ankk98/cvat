@@ -1,0 +1,39 @@
+{
+    "service_name": "MediaPipe Pose Detection",
+    "service_url": "http://localhost:8000",
+    "endpoints": {
+        "detect": "/detect",
+        "health": "/health"
+    },
+    "parameters": {
+        "threshold": {
+            "description": "Confidence threshold for pose keypoints",
+            "default": 0.3,
+            "min": 0.0,
+            "max": 1.0
+        }
+    },
+    "supported_formats": ["image/jpeg", "image/png", "image/bmp"],
+    "output_format": "CVAT skeleton annotations",
+    "keypoints": [
+        "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+        "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+        "left_wrist", "right_wrist",
+        "left_pinky_base", "right_pinky_base",
+        "left_index_base", "right_index_base",
+        "left_thumb_base", "right_thumb_base",
+        "left_hip", "right_hip", "left_knee", "right_knee",
+        "left_ankle", "right_ankle",
+        "left_wrist", "left_thumb_cmc", "left_thumb_mcp", "left_thumb_ip", "left_thumb_tip",
+        "left_index_mcp", "left_index_pip", "left_index_dip", "left_index_tip",
+        "left_middle_mcp", "left_middle_pip", "left_middle_dip", "left_middle_tip",
+        "left_ring_mcp", "left_ring_pip", "left_ring_dip", "left_ring_tip",
+        "left_pinky_mcp", "left_pinky_pip", "left_pinky_dip", "left_pinky_tip",
+        "right_wrist", "right_thumb_cmc", "right_thumb_mcp", "right_thumb_ip", "right_thumb_tip",
+        "right_index_mcp", "right_index_pip", "right_index_dip", "right_index_tip",
+        "right_middle_mcp", "right_middle_pip", "right_middle_dip", "right_middle_tip",
+        "right_ring_mcp", "right_ring_pip", "right_ring_dip", "right_ring_tip",
+        "right_pinky_mcp", "right_pinky_pip", "right_pinky_dip", "right_pinky_tip"
+    ],
+    "optimized_for": "egocentric vision with hand focus"
+}

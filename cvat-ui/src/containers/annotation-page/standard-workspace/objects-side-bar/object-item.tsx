@@ -8,6 +8,8 @@ import { connect } from 'react-redux';
 
 import {
     updateAnnotationsAsync,
+    createAnnotationsAsync,
+    removeObjectAsync as removeObjectAsyncAction,
     changeFrameAsync,
     changeGroupColorAsync,
     pasteShapeAsync,
@@ -27,7 +29,7 @@ import { getColor } from 'components/annotation-page/standard-workspace/objects-
 import openCVWrapper from 'utils/opencv-wrapper/opencv-wrapper';
 import { shift } from 'utils/math';
 import {
-    Label, ObjectState, Attribute, Job, ShapeType,
+    Label, ObjectState, Attribute, Job, ShapeType, ObjectType, getCore,
 } from 'cvat-core-wrapper';
 import { Canvas, CanvasMode } from 'cvat-canvas-wrapper';
 import { Canvas3d } from 'cvat-canvas3d-wrapper';
@@ -66,6 +68,8 @@ interface DispatchToProps {
     switchPropagateVisibility: (visible: boolean) => void;
     changeGroupColor(group: number, color: string): void;
     updateActiveControl(activeControl: ActiveControl): void;
+    removeObjectAsync: (objectState: ObjectState, force: boolean) => Promise<void>;
+    createAnnotationsAsync: (states: ObjectState[]) => Promise<void>;
 }
 
 function mapStateToProps(state: CombinedState, own: OwnProps): StateToProps {
@@ -137,8 +141,16 @@ function mapDispatchToProps(dispatch: any): DispatchToProps {
         updateActiveControl(activeControl: ActiveControl): void {
             dispatch(updateActiveControlAction(activeControl));
         },
+        removeObjectAsync(objectState: ObjectState, force: boolean): Promise<void> {
+            return dispatch(removeObjectAsyncAction(objectState, force));
+        },
+        createAnnotationsAsync(states: ObjectState[]): Promise<void> {
+            return dispatch(createAnnotationsAsync(states));
+        },
     };
 }
+
+const core = getCore();
 
 type Props = StateToProps & DispatchToProps & OwnProps;
 interface State {
@@ -378,6 +390,68 @@ class ObjectItemContainer extends React.PureComponent<Props, State> {
         openAnnotationsActionModal({ defaultObjectState: objectState });
     };
 
+    private convertMaskToPolygon = async (): Promise<void> => {
+        const { objectState, readonly, removeObjectAsync, createAnnotationsAsync, frameNumber } = this.props;
+        if (readonly || objectState.shapeType !== ShapeType.MASK) {
+            return;
+        }
+
+        try {
+            // Use OpenCV to get contours from mask
+            const contours = await openCVWrapper.getContoursFromState(objectState);
+            if (!contours || contours.length === 0) {
+                throw new Error('Failed to extract contours from mask');
+            }
+
+            // Use the largest contour (or convex hull if multiple)
+            const contour = contours.length > 1
+                ? await openCVWrapper.getContourFromState(objectState)
+                : contours[0];
+
+            // Convert contour to flat points array [x1, y1, x2, y2, ...]
+            const polygonPoints = contour.flat();
+
+            // Validate polygon has minimum points (at least 3 points = 6 coordinates)
+            if (polygonPoints.length < 6) {
+                throw new Error('Failed to extract valid polygon from mask (too few points). The mask may be too small or invalid.');
+            }
+
+            // Create a new ObjectState with polygon type (shapeType is read-only, so we must create new)
+            const polygonState = new core.classes.ObjectState({
+                objectType: objectState.objectType,
+                shapeType: ShapeType.POLYGON,
+                source: objectState.source,
+                zOrder: objectState.zOrder,
+                label: objectState.label,
+                points: polygonPoints,
+                frame: objectState.frame,
+                occluded: objectState.occluded,
+                outside: objectState.outside,
+                attributes: objectState.attributes,
+                group: objectState.group,
+            });
+
+            // Delete the old mask and create the new polygon
+            await removeObjectAsync(objectState, false);
+            await createAnnotationsAsync([polygonState]);
+
+            // Show success notification
+            const { notification } = await import('antd');
+            notification.success({
+                message: 'Mask converted to polygon',
+                description: 'The mask has been successfully converted to a polygon',
+            });
+        } catch (error: any) {
+            // eslint-disable-next-line no-console
+            console.error('Failed to convert mask to polygon:', error);
+            const { notification } = await import('antd');
+            notification.error({
+                message: 'Conversion failed',
+                description: error.message || 'Failed to convert mask to polygon',
+            });
+        }
+    };
+
     private commit(): void {
         const { objectState, readonly, updateState } = this.props;
         if (!readonly) {
@@ -431,6 +505,7 @@ class ObjectItemContainer extends React.PureComponent<Props, State> {
                 slice={this.slice}
                 resetCuboidPerspective={this.resetCuboidPerspective}
                 runAnnotationAction={this.runAnnotationAction}
+                convertMaskToPolygon={this.convertMaskToPolygon}
             />
         );
     }

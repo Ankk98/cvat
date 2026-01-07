@@ -653,6 +653,12 @@ class CanvasWrapperComponent extends React.PureComponent<Props> {
             onUpdateEditedObject, activeObjectHidden, workspace,
         } = this.props;
 
+        // CRITICAL: If tracking is handling this event, skip creating a shape
+        // This prevents duplicate shapes when using the Track button
+        if (event.detail?.trackingHandled) {
+            return;
+        }
+
         if (!event.detail.continue) {
             updateActiveControl(ActiveControl.CURSOR);
         }

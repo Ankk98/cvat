@@ -1,0 +1,64 @@
+metadata:
+  name: pth-facebookresearch-sam-vit-h-rocm
+  namespace: cvat
+  annotations:
+    name: Segment Anything (ROCm)
+    version: 2
+    type: interactor
+    version: 2
+    spec: ""
+    min_pos_points: 0
+    min_neg_points: 0
+    startswith_box_optional: true
+    animated_gif: https://raw.githubusercontent.com/cvat-ai/cvat/develop/site/content/en/images/hrnet_example.gif
+    help_message: The interactor allows to get a mask of an object using at least one positive, and any negative points inside it
+
+spec:
+  description: Interactive object segmentation with Segment-Anything on ROCm GPUs
+  runtime: 'python:3.10'
+  handler: main:handler
+  eventTimeout: 30s
+  env:
+    - name: PYTHONPATH
+      value: /opt/nuclio/sam
+
+  build:
+    image: cvat.pth.facebookresearch.sam.vit_h:latest-rocm
+    baseImage: docker.io/rocm/pytorch:rocm7.1_ubuntu22.04_py3.10_pytorch_release_2.6.0
+
+    directives:
+      preCopy:
+        - kind: ENV
+          value: DEBIAN_FRONTEND=noninteractive
+        - kind: WORKDIR
+          value: /opt/nuclio/sam
+        - kind: RUN
+          value: apt-get update && apt-get install -y git python3 python3-pip ffmpeg libsm6 libxext6 && rm -rf /var/lib/apt/lists/*
+        - kind: RUN
+          value: pip3 install --upgrade pip
+        - kind: RUN
+          value: pip3 install pycocotools matplotlib onnxruntime-gpu onnx
+        - kind: RUN
+          value: pip3 install git+https://github.com/facebookresearch/segment-anything.git
+        - kind: RUN
+          value: curl -O https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+
+  triggers:
+    myHttpTrigger:
+      numWorkers: 1
+      kind: 'http'
+      workerAvailabilityTimeoutMilliseconds: 10000
+      attributes:
+        maxRequestBodySize: 33554432 # 32MB
+
+  resources:
+    limits:
+      amd.com/gpu: 1
+
+  platform:
+    attributes:
+      restartPolicy:
+        name: always
+        maximumRetryCount: 3
+      mountMode: volume
+

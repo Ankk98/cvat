@@ -19,6 +19,13 @@ __pycache__
 /tmp*cvat/
 /temp*/
 
+# Ignore test outputs and debug files
+**/debug_output/
+**/debug_results/
+**/test-results/
+**/visualizations*/
+**/.venv/
+
 # Ignore generated test files
 docker-compose.tests.yml
 
@@ -77,3 +84,11 @@ cvat-ui/dist
 **/!.yarn/releases
 **/!.yarn/sdks
 **/!.yarn/versions
+
+nuctl*
+
+# Temporary documentation
+tmp-docs/
+
+.bash_history
+serverless/pytorch/mmdetection3d/fcaf3d/checkpoints/*

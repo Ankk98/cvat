@@ -1406,13 +1406,23 @@ export class Track extends Drawn {
 
         const singlePosition = leftPosition || rightPosition;
         if (singlePosition) {
+            // Get the last frame of this track to determine if it has ended
+            const frames = Object.keys(this.shapes).map(f => +f).sort((a, b) => a - b);
+            const lastFrame = frames.length > 0 ? frames[frames.length - 1] : null;
+
+            // If we only have a leftPosition (track ended before current frame) and current frame is after last frame,
+            // OR if the single position is the rightPosition (track starts after current frame),
+            // mark as outside
+            const isAfterTrackEnd = lastFrame !== null && targetFrame > lastFrame;
+            const isBeforeTrackStart = singlePosition === rightPosition;
+
             return {
                 points: [...singlePosition.points],
                 rotation: singlePosition.rotation,
                 occluded: singlePosition.occluded,
                 zOrder: singlePosition.zOrder,
                 keyframe: targetFrame in this.shapes,
-                outside: singlePosition === rightPosition ? true : singlePosition.outside,
+                outside: isBeforeTrackStart || isAfterTrackEnd || singlePosition.outside,
             };
         }
 
@@ -3059,19 +3069,83 @@ export class SkeletonTrack extends Track {
 
     public get(frame: number): Required<SerializedData> {
         const { prev, next } = this.boundedKeyframes(frame);
-        const position = this.getPosition(frame, prev, next);
-        const elements = this.elements.map((element) => ({
-            ...element.get(frame),
-            source: this.source,
-            group: this.groupObject,
-            zOrder: position.zOrder,
-            rotation: 0,
-        }));
+
+        // For skeleton tracks, get elements first to determine if track should be visible
+        // Elements can exist even if the track shape doesn't exist on this frame
+        const elements = this.elements.map((element) => {
+            try {
+                return {
+                    ...element.get(frame),
+                    source: this.source,
+                    group: this.groupObject,
+                    rotation: 0,
+                };
+            } catch (error: unknown) {
+                // If element can't be interpolated, it's outside
+                if (error instanceof InterpolationNotPossibleError) {
+                    return {
+                        outside: true,
+                        occluded: false,
+                        lock: false,
+                        hidden: false,
+                        keyframe: false,
+                        source: this.source,
+                        group: this.groupObject,
+                        rotation: 0,
+                    } as any;
+                }
+                throw error;
+            }
+        });
+
+        // Check if all elements are outside - if so, track should be filtered out
+        const allElementsOutside = elements.every((el) => el.outside);
+
+        // Try to get position, but handle case where track has no shape on this frame
+        // For skeleton tracks, elements determine visibility, not the track shape
+        let position: InterpolatedPosition & { keyframe: boolean; zOrder: number };
+        try {
+            position = this.getPosition(frame, prev, next) as typeof position;
+        } catch (error: unknown) {
+            if (error instanceof InterpolationNotPossibleError) {
+                // Track shape can't be interpolated - use element data to determine position
+                // Find first visible element to get zOrder (elements already have zOrder from their get() call)
+                const firstVisibleElement = elements.find((el) => !el.outside);
+                // Elements should have zOrder from their get() call, but fallback to 0 if not
+                const defaultZOrder = (firstVisibleElement && 'zOrder' in firstVisibleElement && firstVisibleElement.zOrder !== undefined)
+                    ? firstVisibleElement.zOrder
+                    : 0;
+
+                // Create default position - outside will be overridden below based on allElementsOutside
+                position = {
+                    rotation: 0,
+                    occluded: false,
+                    outside: allElementsOutside, // Will be overridden below, but needed for type
+                    zOrder: defaultZOrder,
+                    keyframe: false,
+                    points: [],
+                };
+            } else {
+                throw error;
+            }
+        }
+
+        // Update element zOrder from position
+        elements.forEach((element) => {
+            element.zOrder = position.zOrder;
+        });
+
+        // For skeleton tracks, keyframe should only be true if:
+        // 1. The track shape itself has a keyframe on this frame, OR
+        // 2. At least one element has a keyframe AND at least one element is visible (not outside)
+        // This prevents tracks with all elements outside from being shown just because an element has a keyframe
+        const hasVisibleElements = !allElementsOutside;
+        const trackKeyframe = position.keyframe || (hasVisibleElements && elements.some((el) => el.keyframe));
 
         return {
             ...position,
             parentID: null,
-            keyframe: position.keyframe || elements.some((el) => el.keyframe),
+            keyframe: trackKeyframe,
             attributes: this.getAttributes(frame),
             descriptions: [...this.descriptions],
             group: this.groupObject,
@@ -3087,7 +3161,9 @@ export class SkeletonTrack extends Track {
             elements,
             frame,
             source: this.source,
-            outside: elements.every((el) => el.outside),
+            // For skeleton tracks, outside is determined by elements, not track shape
+            // If all elements are outside, the track should be filtered out
+            outside: allElementsOutside,
             occluded: elements.every((el) => el.occluded),
             lock: elements.every((el) => el.lock),
             hidden: elements.every((el) => el.hidden),
@@ -3264,12 +3340,22 @@ export class SkeletonTrack extends Track {
 
         const singlePosition = leftPosition || rightPosition;
         if (singlePosition) {
+            // Get the last frame of this track to determine if it has ended
+            const frames = Object.keys(this.shapes).map(f => +f).sort((a, b) => a - b);
+            const lastFrame = frames.length > 0 ? frames[frames.length - 1] : null;
+            
+            // If we only have a leftPosition (track ended before current frame) and current frame is after last frame,
+            // OR if the single position is the rightPosition (track starts after current frame),
+            // mark as outside
+            const isAfterTrackEnd = lastFrame !== null && targetFrame > lastFrame;
+            const isBeforeTrackStart = singlePosition === rightPosition;
+            
             return {
                 rotation: 0,
                 occluded: singlePosition.occluded,
                 zOrder: singlePosition.zOrder,
                 keyframe: targetFrame in this.shapes,
-                outside: singlePosition === rightPosition ? true : singlePosition.outside,
+                outside: isBeforeTrackStart || isAfterTrackEnd || singlePosition.outside,
                 points: [],
             };
         }

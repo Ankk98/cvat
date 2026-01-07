@@ -1,0 +1,50 @@
+# MediaPipe Pose Detection Service - Docker Compose
+# =================================================
+#
+# This docker-compose file provides an easy way to run the MediaPipe pose service.
+#
+# Usage:
+#   docker-compose up -d
+#   docker-compose logs -f
+#   docker-compose down
+
+version: '3.8'
+
+services:
+  mediapipe-pose:
+    container_name: mediapipe-pose
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - cvat_cvat
+
+networks:
+  cvat_cvat:
+    external: true
+
+# Example configuration for running alongside CVAT
+# Uncomment and modify the CVAT service if you want to run both together
+#
+# services:
+#   cvat:
+#     image: openvino/cvat_server:latest
+#     ports:
+#       - "8080:8080"
+#     environment:
+#       - CVAT_HOST=localhost
+#       - CVAT_PORT=8080
+#     depends_on:
+#       - mediapipe-pose
+#     networks:
+#       - mediapipe-network

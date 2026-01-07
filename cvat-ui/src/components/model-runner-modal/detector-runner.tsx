@@ -18,7 +18,7 @@ import { ArrowRightOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import CVATTooltip from 'components/common/cvat-tooltip';
 import { clamp } from 'utils/math';
 import {
-    MLModel, ModelKind, DimensionType, Label, LabelType,
+    MLModel, ModelKind, DimensionType, Label, LabelType, ShapeType,
 } from 'cvat-core-wrapper';
 
 import LabelsMapperComponent, { LabelInterface, FullMapping } from './labels-mapper';
@@ -43,6 +43,9 @@ export interface AnnotateTaskRequestBody {
     cleanup: boolean;
     conv_mask_to_poly: boolean;
     threshold?: number;
+    enable_skeleton_tracking?: boolean;
+    enable_tracking?: boolean;
+    enable_polygon_tracking?: boolean;
 }
 
 function convertMappingToServer(mapping: FullMapping): ServerMapping {
@@ -63,10 +66,49 @@ function convertMappingToServer(mapping: FullMapping): ServerMapping {
     ), {});
 }
 
+/**
+ * Determines if skeleton tracking should be enabled for automatic annotation.
+ *
+ * Requirements:
+ * 1. Model must have skeleton labels (type === 'skeleton')
+ * 2. At least one skeleton label must be mapped to a task label
+ * 3. Task must be a video task (frame_step === 1) - validated on backend
+ */
+function shouldEnableSkeletonTracking(
+    model: MLModel | undefined,
+    mapping: FullMapping
+): boolean {
+    if (!model) return false;
+
+    // Check if model has skeleton labels
+    const skeletonLabels = model.labels?.filter(
+        label => label.type === LabelType.SKELETON
+    ) ?? [];
+
+    if (skeletonLabels.length === 0) return false;
+
+    // Check if any skeleton labels are actually mapped
+    const mappedModelLabelNames = new Set(
+        mapping.map(([modelLabel]) => modelLabel.name)
+    );
+
+    return skeletonLabels.some(
+        label => mappedModelLabelNames.has(label.name)
+    );
+}
+
 function DetectorRunner(props: Props): JSX.Element {
     const {
         models, withCleanup, labels, dimension, runInference,
     } = props;
+
+    const requiredShape = dimension === DimensionType.DIMENSION_3D ? ShapeType.CUBOID : null;
+    const compatibleModels = models.filter((model) => {
+        if (!requiredShape) {
+            return true;
+        }
+        return model.supportedShapeTypes?.includes(requiredShape);
+    });
 
     const [modelID, setModelID] = useState<string | null>(null);
     const [threshold, setThreshold] = useState<number>(0.5);
@@ -75,14 +117,26 @@ function DetectorRunner(props: Props): JSX.Element {
     const [mapping, setMapping] = useState<FullMapping>([]);
     const [convertMasksToPolygons, setConvertMasksToPolygons] = useState<boolean>(false);
     const [detectorThreshold, setDetectorThreshold] = useState<number | null>(null);
+    const [enableTracking, setEnableTracking] = useState<boolean>(false);
+    const [enablePolygonTracking, setEnablePolygonTracking] = useState<boolean>(false);
+    const [enableSkeletonTracking, setEnableSkeletonTracking] = useState<boolean>(false);
     const [modelLabels, setModelLabels] = useState<LabelInterface[]>([]);
     const [taskLabels, setTaskLabels] = useState<LabelInterface[]>([]);
 
-    const model = models.find((_model): boolean => _model.id === modelID);
+    const model = compatibleModels.find((_model): boolean => _model.id === modelID);
     const isDetector = model?.kind === ModelKind.DETECTOR;
     const isReId = model?.kind === ModelKind.REID;
     const convertMasks2PolygonVisible = isDetector &&
         [LabelType.ANY, LabelType.MASK].includes(model.returnType);
+    const polygonTrackingVisible = isDetector &&
+        (model?.supportedShapeTypes?.includes(ShapeType.POLYGON) ||
+         model?.supportedShapeTypes?.includes(ShapeType.MASK) ||
+         [LabelType.ANY, LabelType.MASK].includes(model?.returnType || LabelType.ANY));
+    // Skeleton tracking is available if model has skeleton labels and at least one is mapped
+    const skeletonTrackingVisible = isDetector && shouldEnableSkeletonTracking(model, mapping);
+    // Hide the old generic "Enable tracking" toggle when specific tracking modes are available
+    // This prevents confusion - users should use skeleton tracking or polygon tracking instead
+    const enableTrackingVisible = isDetector && !skeletonTrackingVisible && !polygonTrackingVisible;
 
     const buttonEnabled = model && (isReId || (isDetector && mapping.length));
 
@@ -119,20 +173,26 @@ function DetectorRunner(props: Props): JSX.Element {
         }
     }, [labels, model]);
 
+    useEffect(() => {
+        if (modelID && !compatibleModels.some((_model) => _model.id === modelID)) {
+            setModelID(null);
+        }
+    }, [compatibleModels, modelID]);
+
     return (
         <div className='cvat-run-model-content'>
             <Row align='middle'>
                 <Col span={4}>Model:</Col>
                 <Col span={20}>
                     <Select
-                        placeholder={dimension === DimensionType.DIMENSION_2D ? 'Select a model' : 'No models available'}
-                        disabled={dimension !== DimensionType.DIMENSION_2D}
+                        placeholder={compatibleModels.length ? 'Select a model' : 'No models available'}
+                        disabled={!compatibleModels.length}
                         style={{ width: '100%' }}
                         onChange={(_modelID: string): void => {
                             setModelID(_modelID);
                         }}
                     >
-                        {models.map(
+                        {compatibleModels.map(
                             (_model: MLModel): JSX.Element => (
                                 <Select.Option value={_model.id} key={_model.id}>
                                     {_model.name}
@@ -180,6 +240,42 @@ function DetectorRunner(props: Props): JSX.Element {
                         onChange={(checked: boolean): void => setCleanup(checked)}
                     />
                     <Text>Clean previous annotations</Text>
+                </div>
+            )}
+            {enableTrackingVisible && (
+                <div className='cvat-detector-runner-enable-tracking-wrapper'>
+                    <Switch
+                        checked={enableTracking}
+                        onChange={(checked: boolean): void => setEnableTracking(checked)}
+                    />
+                    <Text>Enable tracking</Text>
+                    <CVATTooltip title='Enable tracking mode to create polygon tracks instead of individual shapes per frame'>
+                        <QuestionCircleOutlined className='cvat-info-circle-icon' />
+                    </CVATTooltip>
+                </div>
+            )}
+            {polygonTrackingVisible && (
+                <div className='cvat-detector-runner-enable-polygon-tracking-wrapper'>
+                    <Switch
+                        checked={enablePolygonTracking}
+                        onChange={(checked: boolean): void => setEnablePolygonTracking(checked)}
+                    />
+                    <Text>Enable polygon tracking</Text>
+                    <CVATTooltip title='Create PolygonTrack items by tracking objects across frames. Handles gaps, new objects, and disappearing objects. Only works for video tasks.'>
+                        <QuestionCircleOutlined className='cvat-info-circle-icon' />
+                    </CVATTooltip>
+                </div>
+            )}
+            {skeletonTrackingVisible && (
+                <div className='cvat-detector-runner-enable-skeleton-tracking-wrapper'>
+                    <Switch
+                        checked={enableSkeletonTracking}
+                        onChange={(checked: boolean): void => setEnableSkeletonTracking(checked)}
+                    />
+                    <Text>Enable skeleton tracking</Text>
+                    <CVATTooltip title='Create SkeletonTrack items by tracking skeletons across frames. Handles gaps, new objects, and disappearing objects. Only works for video tasks (frame_step=1).'>
+                        <QuestionCircleOutlined className='cvat-info-circle-icon' />
+                    </CVATTooltip>
                 </div>
             )}
             {isDetector && (
@@ -264,6 +360,10 @@ function DetectorRunner(props: Props): JSX.Element {
                                     cleanup,
                                     conv_mask_to_poly: convertMasksToPolygons,
                                     ...(detectorThreshold !== null ? { threshold: detectorThreshold } : {}),
+                                    ...(enableSkeletonTracking ? { enable_skeleton_tracking: true } : {}),
+                                    // Only send enable_tracking if the old toggle is visible (not hidden by specific tracking modes)
+                                    ...(enableTrackingVisible && enableTracking ? { enable_tracking: true } : {}),
+                                    ...(enablePolygonTracking ? { enable_polygon_tracking: true } : {}),
                                 };
 
                                 runInference(model, body);
