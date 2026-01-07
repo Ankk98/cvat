@@ -10,14 +10,30 @@ metadata:
     type: detector
     # Supported annotation shapes: cuboid (3D boxes)
     supported_shape_types: cuboid
-    # Output labels: pedestrian detection
     spec: |
       [
-        { "id": 0, "name": "Pedestrian", "type": "cuboid" }
+        { "id": 0, "name": "cabinet", "type": "cuboid" },
+        { "id": 1, "name": "bed", "type": "cuboid" },
+        { "id": 2, "name": "chair", "type": "cuboid" },
+        { "id": 3, "name": "sofa", "type": "cuboid" },
+        { "id": 4, "name": "table", "type": "cuboid" },
+        { "id": 5, "name": "door", "type": "cuboid" },
+        { "id": 6, "name": "window", "type": "cuboid" },
+        { "id": 7, "name": "bookshelf", "type": "cuboid" },
+        { "id": 8, "name": "picture", "type": "cuboid" },
+        { "id": 9, "name": "counter", "type": "cuboid" },
+        { "id": 10, "name": "desk", "type": "cuboid" },
+        { "id": 11, "name": "curtain", "type": "cuboid" },
+        { "id": 12, "name": "refrigerator", "type": "cuboid" },
+        { "id": 13, "name": "showercurtain", "type": "cuboid" },
+        { "id": 14, "name": "toilet", "type": "cuboid" },
+        { "id": 15, "name": "sink", "type": "cuboid" },
+        { "id": 16, "name": "bathtub", "type": "cuboid" },
+        { "id": 17, "name": "otherfurniture", "type": "cuboid" }
       ]
 
 spec:
-  description: FCAF3D fully convolutional anchor-free 3D object detection for indoor scenes using MMDetection3D on ROCm GPUs. Optimized for pedestrian detection in social navigation datasets. (Proxy implementation)
+  description: FCAF3D fully convolutional anchor-free 3D object detection for indoor scenes using MMDetection3D on ROCm GPUs. (Proxy implementation)
   runtime: 'python:3.9'
   handler: main-proxy:handler
   eventTimeout: 60s  # FCAF3D can be slower than heuristic methods

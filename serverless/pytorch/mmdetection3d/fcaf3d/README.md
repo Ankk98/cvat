@@ -182,7 +182,7 @@ The model outputs CVAT-compatible cuboid annotations with:
 - **Rotation**: Orientation angles (primarily Z-axis for heading)
 - **Scale**: Dimensions (length, width, height)
 - **Confidence**: Detection confidence score
-- **Label**: "Pedestrian" for detected persons
+- **Label**: 18 classes from ScanNet dataset
 
 ## Performance
 
@@ -283,6 +283,27 @@ python tools/train.py configs/fcaf3d/fcaf3d_custom.py
 - [FCAF3D Paper](https://arxiv.org/abs/2112.00322)
 - [MMDetection3D Documentation](https://mmdetection3d.readthedocs.io/)
 - [CVAT Automatic Annotation](https://docs.cvat.ai/docs/manual/advanced/automatic-annotation/)
+
+## Challenges and Learnings
+
+During the implementation of FCAF3D for CVAT serverless functions, we encountered and resolved several critical technical challenges:
+
+### 1. MinkowskiEngine CPU vs GPU Conflict
+**Problem**: Docker build failed when compiling `MinkowskiEngine` with CUDA support due to resource limitations or compiler mismatch in the build environment.
+**Part 1 Solution**: We compiled `MinkowskiEngine` in **CPU-only mode** (using a pre-built wheel) to ensure a successful build. This forces the heavy 3D sparse convolutions (Backbone/Neck) to run on the CPU.
+
+### 2. MMCV NMS Device Mismatch
+**Problem**: While the backbone runs on CPU (due to the above constraint), the Neural Network's post-processing (NMS - Non-Maximum Suppression) implemented in `mmcv-full` requires **GPU** tensors. Passing CPU tensors from the backbone to the GPU-only NMS function caused `RuntimeError: implementation for device cpu not found`.
+**Part 2 Solution**: We implemented a hybrid execution model by monkey-patching `mmcv.ops.iou3d.nms3d_normal`.
+- The model forces `device='cpu'` to satisfy MinkowskiEngine.
+- The monkey-patched NMS wrapper intercepts the call, moves tensors to the GPU (if available) for the NMS operation, and then moves the results back to the CPU.
+- This allows us to utilize the GPU for the computationally intensive sorting/IOU operations while keeping the backbone compatible with the CPU-only MinkowskiEngine build.
+
+### 3. Deployment Structure
+- **`nuclio/main.py`**: The entry point for the serverless function.
+- **`main_modified.py`**: A local development/sync copy.
+- **`function-rocm.yaml`**: Defines the serverless function configuration.
+- **Service vs Function**: The deployment uses a "proxy" pattern where the Nuclio function forwards requests to a persistent web service (`fcaf3d-service`) to avoid initializing the heavy 3D model for every single serverless request.
 
 ## License
 

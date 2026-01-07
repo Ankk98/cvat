@@ -25,10 +25,9 @@ RUN apt-get update && apt-get install -y \
 # Install MinkowskiEngine for FCAF3D sparse convolutions
 # (Not included in base MMDetection3D image)
 # Build from source with BLAS override and CPU-only flag to avoid GPU compilation issues
-RUN cd /tmp && \
-    git clone https://github.com/NVIDIA/MinkowskiEngine.git && \
-    cd MinkowskiEngine && \
-    python setup.py install --blas=openblas --cpu_only
+# Copy and install pre-built MinkowskiEngine wheel
+COPY minkowskiengine-0.5.4-cp310-cp310-linux_x86_64.whl /tmp/
+RUN pip install /tmp/minkowskiengine-0.5.4-cp310-cp310-linux_x86_64.whl
 
 # Create symlink for Nuclio Python executable (use virtual environment)
 RUN mkdir -p /usr/local/bin && ln -sf /opt/venv/bin/python3 /usr/local/bin/python3

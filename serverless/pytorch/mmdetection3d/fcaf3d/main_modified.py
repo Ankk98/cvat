@@ -6,6 +6,48 @@ import sys
 import numpy as np
 from typing import List, Dict, Any, Optional
 
+# Monkey-patch mmcv.ops.nms3d_normal BEFORE importing mmdet3d
+# This ensures that when mmdet3d modules import it, they get the wrapper
+try:
+    import torch
+    import mmcv.ops.iou3d as iou3d_ops
+    import mmcv.ops
+
+    # Save original function
+    if not hasattr(iou3d_ops, '_original_nms3d_normal'):
+        iou3d_ops._original_nms3d_normal = iou3d_ops.nms3d_normal
+
+    def nms3d_normal_wrapper(boxes, scores, iou_threshold):
+        """
+        Wrapper to move tensors to GPU for NMS, then back to CPU.
+        Needed because FCAF3D backbone runs on CPU (MinkowskiEngine requirement)
+        but NMS requires GPU (MMCV requirement).
+        """
+        is_cpu = boxes.device.type == 'cpu'
+        if is_cpu and torch.cuda.is_available():
+            # Move to GPU
+            boxes_gpu = boxes.cuda()
+            scores_gpu = scores.cuda()
+
+            # Run NMS on GPU
+            inds = iou3d_ops._original_nms3d_normal(boxes_gpu, scores_gpu, iou_threshold)
+
+            # Move result back to CPU
+            return inds.cpu()
+        else:
+            return iou3d_ops._original_nms3d_normal(boxes, scores, iou_threshold)
+
+    # Apply patch to both locations where it might be imported
+    iou3d_ops.nms3d_normal = nms3d_normal_wrapper
+    mmcv.ops.nms3d_normal = nms3d_normal_wrapper
+    print("✅ Patched mmcv.ops.nms3d_normal for hybrid CPU-GPU execution")
+
+except ImportError:
+    # mmcv not installed on host, ignore
+    pass
+except Exception as e:
+    print(f"⚠️ Failed to patch NMS: {e}")
+
 # MMDetection3D imports - PYTHONPATH should be set correctly by Nuclio
 try:
     import mmcv
@@ -68,45 +110,14 @@ class FCAF3DDetector:
 
     def _get_device(self):
         """Automatically detect available device (GPU or CPU)."""
+        import torch
+        # Force CPU for FCAF3D models due to MinkowskiEngine CPU-only compatibility
+        # We handle the NMS GPU requirement via monkey-patching
         if self.logger:
-            self.logger.info("🔍 Device Detection:")
-
-        try:
-            import torch
-            if self.logger:
-                self.logger.info(f"PyTorch version: {torch.__version__}")
-                self.logger.info(f"CUDA available: {torch.cuda.is_available()}")
-                self.logger.info(f"ROCm/HIP available: {hasattr(torch.version, 'hip') and torch.version.hip is not None}")
-                if torch.cuda.is_available():
-                    self.logger.info(f"GPU count: {torch.cuda.device_count()}")
-                    for i in range(torch.cuda.device_count()):
-                        self.logger.info(f"GPU {i}: {torch.cuda.get_device_name(i)}")
-
-            # Force CPU for FCAF3D models due to MinkowskiEngine CPU-only compatibility
-            # FCAF3D uses MinkowskiEngine which we compile in CPU-only mode
-            if self.logger:
-                self.logger.info("🎯 Selected: CPU for FCAF3D inference (MinkowskiEngine CPU-only compatibility)")
-            return 'cpu'
-
-            # Original GPU selection logic (disabled for MinkowskiEngine compatibility):
-            # if torch.cuda.is_available():
-            #     # Check for ROCm/CUDA
-            #     if hasattr(torch.version, 'hip') and torch.version.hip:
-            #         if self.logger:
-            #             self.logger.info("🎯 Selected: ROCm GPU for inference (cuda:0)")
-            #         return 'cuda:0'
-            #     else:
-            #         if self.logger:
-            #             self.logger.info("🎯 Selected: CUDA GPU for inference (cuda:0)")
-            #         return 'cuda:0'
-            # else:
-            #     if self.logger:
-            #         self.logger.info("🎯 Selected: CPU for inference (GPU not available)")
-            #     return 'cpu'
-        except ImportError as e:
-            if self.logger:
-                self.logger.warning(f"⚠️ PyTorch not available, using CPU: {e}")
-            return 'cpu'
+            self.logger.info("🎯 Selected: CPU for FCAF3D inference (MinkowskiEngine CPU-only compatibility)")
+            if not torch.cuda.is_available():
+                self.logger.warning("⚠️ JDBC: GPU not available - NMS might fail if no CPU implementation exists")
+        return 'cpu'
 
     def _load_model(self):
         """Load the FCAF3D model and configuration."""
@@ -208,35 +219,67 @@ class FCAF3DDetector:
                 self.logger.info(f"Results keys: {list(results.keys())}")
 
         detections = []
+        data_sample = None
 
-        if 'pts_bbox' not in results:
-            if self.logger:
-                self.logger.warning("⚠️ No 'pts_bbox' key found in results")
-            return detections
+        if isinstance(results, dict):
+            if 'pts_bbox' in results:
+                data_sample = results['pts_bbox']
+            else:
+                if self.logger:
+                    self.logger.warning("⚠️ No 'pts_bbox' key found in results dictionary")
+                return detections
+        elif isinstance(results, (list, tuple)):
+            if len(results) > 0:
+                data_sample = results[0]
+            else:
+                if self.logger:
+                    self.logger.warning("⚠️ Results list/tuple is empty")
+                return detections
+        else:
+            # Assume results is the DetDataSample itself
+            data_sample = results
 
-        bboxes_3d = results['pts_bbox']  # 3D bounding boxes
         if self.logger:
-            self.logger.info(f"3D bbox object type: {type(bboxes_3d)}")
-
-        if len(bboxes_3d) == 0:
-            if self.logger:
-                self.logger.info("ℹ️ No 3D bounding boxes found")
-            return detections
+            self.logger.info(f"Using data sample for conversion: {type(data_sample)}")
 
         # Extract predictions
-        bbox_preds = bboxes_3d.pred_instances_3d
-        if self.logger:
-            self.logger.info(f"Bbox predictions type: {type(bbox_preds)}")
+        try:
+            if hasattr(data_sample, 'pred_instances_3d'):
+                bbox_preds = data_sample.pred_instances_3d
+                if self.logger:
+                    self.logger.info("📦 Detected MMDetection3D 1.x pred_instances_3d format")
 
-        scores = bbox_preds.scores_3d.cpu().numpy()
-        labels = bbox_preds.labels_3d.cpu().numpy()
-        bboxes = bbox_preds.bboxes_3d.cpu().numpy()
+                scores = bbox_preds.scores_3d.cpu().numpy()
+                labels = bbox_preds.labels_3d.cpu().numpy()
+                # Newer mmengine/mmdet3d uses .tensor attribute for bboxes
+                if hasattr(bbox_preds.bboxes_3d, 'tensor'):
+                    bboxes = bbox_preds.bboxes_3d.tensor.cpu().numpy()
+                else:
+                    bboxes = bbox_preds.bboxes_3d.cpu().numpy()
+            elif hasattr(data_sample, 'bboxes_3d'):
+                if self.logger:
+                    self.logger.info("📦 Detected direct bbox object format")
+                scores = data_sample.scores_3d.cpu().numpy() if hasattr(data_sample, 'scores_3d') else np.array([])
+                labels = data_sample.labels_3d.cpu().numpy() if hasattr(data_sample, 'labels_3d') else np.array([])
+                bboxes = data_sample.bboxes_3d.tensor.cpu().numpy() if hasattr(data_sample.bboxes_3d, 'tensor') else data_sample.bboxes_3d.cpu().numpy()
+            else:
+                if self.logger:
+                    self.logger.error(f"❌ Could not find predictions in data sample type {type(data_sample)}")
+                return detections
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"❌ Error extracting predictions: {e}")
+            return detections
 
         if self.logger:
             self.logger.info(f"Raw predictions: {len(scores)} detections")
-            self.logger.info(f"Score range: {scores.min():.4f} - {scores.max():.4f}")
-            self.logger.info(f"Label range: {labels.min()} - {labels.max()}")
-            self.logger.info(f"Bbox shape: {bboxes.shape}")
+            if len(scores) > 0:
+                self.logger.info(f"Score range: {scores.min():.4f} - {scores.max():.4f}")
+                self.logger.info(f"Label range: {labels.min()} - {labels.max()}")
+                self.logger.info(f"Bbox shape: {bboxes.shape}")
+            else:
+                self.logger.info("ℹ️ No detections found in predictions")
+                return detections
 
         processed_count = 0
         filtered_count = 0
@@ -355,13 +398,27 @@ class FCAF3DDetector:
             os.unlink(pcd_path)
 
     def _get_label_name(self, label_id: int) -> str:
-        """Convert label ID to label name."""
-        # Map ScanNet class IDs to CVAT labels
-        # Focus on pedestrian detection - map person/human classes
+        """Convert label ID to ScanNet label name."""
+        # Map ScanNet class IDs to standard names
         label_map = {
-            0: "Pedestrian",  # person
-            1: "Pedestrian",  # human
-            # Add other mappings as needed
+            0: "cabinet",
+            1: "bed",
+            2: "chair",
+            3: "sofa",
+            4: "table",
+            5: "door",
+            6: "window",
+            7: "bookshelf",
+            8: "picture",
+            9: "counter",
+            10: "desk",
+            11: "curtain",
+            12: "refrigerator",
+            13: "showercurtain",
+            14: "toilet",
+            15: "sink",
+            16: "bathtub",
+            17: "otherfurniture"
         }
         return label_map.get(label_id, f"class_{label_id}")
 
@@ -421,14 +478,29 @@ class FCAF3DDetector:
                     file_suffix = '.bin'
                     file_data = cloud_bytes
             else:
-                # Try BIN format first (like SIT does)
                 if len(cloud_bytes) % 4 == 0 and len(cloud_bytes) >= 16:
                     if self.logger:
                         self.logger.info("📄 Assuming BIN format - using as-is")
                     file_suffix = '.bin'
                     file_data = cloud_bytes
+
+                    # DEBUG: Analyze point cloud statistics
+                    try:
+                        points_debug = np.frombuffer(cloud_bytes, dtype=np.float32).reshape(-1, 4) if len(cloud_bytes) % 16 == 0 else np.frombuffer(cloud_bytes, dtype=np.float32).reshape(-1, 6)
+                        if self.logger:
+                            x, y, z = points_debug[:, 0], points_debug[:, 1], points_debug[:, 2]
+                            self.logger.info(f"🔍 Point Cloud Stats (Frame {frame_id}):")
+                            self.logger.info(f"   Count: {len(points_debug)}")
+                            self.logger.info(f"   X range: [{x.min():.2f}, {x.max():.2f}] (Span: {x.max()-x.min():.2f})")
+                            self.logger.info(f"   Y range: [{y.min():.2f}, {y.max():.2f}] (Span: {y.max()-y.min():.2f})")
+                            self.logger.info(f"   Z range: [{z.min():.2f}, {z.max():.2f}] (Span: {z.max()-z.min():.2f})")
+                            self.logger.info(f"   Scale Check: If spans are big (>100), inputs might be millimeters. If small (<10), likely meters.")
+                    except Exception as e:
+                        if self.logger:
+                            self.logger.warning(f"⚠️ Could not analyze point stats: {e}")
+
                     if self.logger:
-                        self.logger.info(f"📊 Using BIN data: {len(file_data)} bytes ({len(file_data) // 16} points)")
+                        self.logger.info(f"📊 Using BIN data: {len(file_data)} bytes")
                 else:
                     # Data doesn't look like BIN, try PCD conversion as fallback
                     if self.logger:
@@ -464,7 +536,16 @@ class FCAF3DDetector:
                 if self.logger:
                     self.logger.info("✅ FCAF3D inference completed")
                     self.logger.info(f"⏱️ Inference time: {end_time - start_time:.3f}s" if start_time else "N/A")
-                    self.logger.info(f"📊 Raw results keys: {list(results.keys()) if isinstance(results, dict) else type(results)}")
+                    if isinstance(results, dict):
+                        self.logger.info(f"📊 Raw results keys: {list(results.keys())}")
+                    elif isinstance(results, (list, tuple)):
+                        self.logger.info(f"📊 Raw results is {type(results)} of length {len(results)}")
+                        if len(results) > 0:
+                            self.logger.info(f"📊 First element type: {type(results[0])}")
+                            self.logger.info(f"📊 First element attributes: {[attr for attr in dir(results[0]) if not attr.startswith('_')][:10]}")
+                    else:
+                        self.logger.info(f"📊 Raw results type: {type(results)}")
+                        self.logger.info(f"📊 Attributes: {[attr for attr in dir(results) if not attr.startswith('_')][:10]}")
 
                 # Convert to CVAT format
                 if self.logger:
@@ -489,7 +570,7 @@ class FCAF3DDetector:
                 self.logger.error(f"❌ CRITICAL: Inference failed for frame {frame_id}: {e}")
                 import traceback
                 self.logger.error(f"Full traceback:\n{traceback.format_exc()}")
-            return []
+            raise e
 
 
 def init_context(context):
@@ -550,6 +631,7 @@ def handler(context, event):
 
         # Run detection
         context.logger.info("🎯 Starting FCAF3D detection...")
+
         detections = context.user_data.detector.infer(
             cloud_bytes=cloud_bytes,
             threshold=threshold,
